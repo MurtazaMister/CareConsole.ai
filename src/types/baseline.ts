@@ -1,100 +1,92 @@
+// ── Baseline Profile (one-time setup) ─────────────────────
+
 export interface BaselineProfile {
-  energyLevel: number
+  // Condition info
+  primaryCondition: string
+  conditionDurationMonths: number
+
+  // Core symptoms (NRS 0–10, clinically standard)
+  mainSymptomSeverity: number
   painLevel: number
-  moodLevel: number
-  sleepQuality: number
-  mobility: number
-  notes: string
+  fatigueLevel: number
+  breathingDifficulty: number
+  functionalLimitation: number  // how much symptoms prevent normal tasks
+
+  // Sleep
+  sleepHours: number            // 3–12
+  sleepQuality: number          // 1–5 Likert
+  usualBedtime: string          // HH:MM
+  usualWakeTime: string         // HH:MM
+
   createdAt: string
 }
 
-export interface MetricConfig {
-  key: keyof Omit<BaselineProfile, 'notes' | 'createdAt'>
+// ── Core symptom metrics (shared between baseline & daily) ─
+
+export interface SymptomMetric {
+  key: 'mainSymptomSeverity' | 'painLevel' | 'fatigueLevel' | 'breathingDifficulty' | 'functionalLimitation'
   label: string
+  question: string
+  dailyQuestion: string
   icon: string
-  lowLabel: string
-  highLabel: string
   color: string
   gradient: string
 }
 
-export const METRIC_CONFIGS: MetricConfig[] = [
+export const SYMPTOM_METRICS: SymptomMetric[] = [
   {
-    key: 'energyLevel',
-    label: 'Energy Level',
-    icon: '⚡',
-    lowLabel: 'Cannot get out of bed',
-    highLabel: 'Fully active and energetic',
-    color: '#f59e0b',
-    gradient: 'from-amber-400 to-orange-500',
-  },
-  {
-    key: 'painLevel',
-    label: 'Pain Level',
-    icon: '💊',
-    lowLabel: 'No pain at all',
-    highLabel: 'Severe, unbearable pain',
-    color: '#ef4444',
-    gradient: 'from-red-400 to-rose-500',
-  },
-  {
-    key: 'moodLevel',
-    label: 'Mood',
-    icon: '🧠',
-    lowLabel: 'Very low, struggling',
-    highLabel: 'Excellent, thriving',
+    key: 'mainSymptomSeverity',
+    label: 'Main Symptom',
+    question: 'On an average day, how severe is your main symptom?',
+    dailyQuestion: 'How severe is your main symptom TODAY?',
+    icon: '🎯',
     color: '#8b5cf6',
     gradient: 'from-violet-400 to-purple-500',
   },
   {
-    key: 'sleepQuality',
-    label: 'Sleep Quality',
-    icon: '🌙',
-    lowLabel: 'Terrible, no rest',
-    highLabel: 'Deep, restorative sleep',
+    key: 'painLevel',
+    label: 'Body Pain',
+    question: 'On an average day, what is your overall body pain level?',
+    dailyQuestion: 'What is your overall body pain TODAY?',
+    icon: '💊',
+    color: '#ef4444',
+    gradient: 'from-red-400 to-rose-500',
+  },
+  {
+    key: 'fatigueLevel',
+    label: 'Fatigue',
+    question: 'On an average day, what is your usual level of fatigue?',
+    dailyQuestion: 'How fatigued or weak do you feel TODAY?',
+    icon: '🔋',
+    color: '#f59e0b',
+    gradient: 'from-amber-400 to-orange-500',
+  },
+  {
+    key: 'breathingDifficulty',
+    label: 'Breathing',
+    question: 'On an average day, how much difficulty do you have breathing?',
+    dailyQuestion: 'How much difficulty are you having breathing TODAY?',
+    icon: '🫁',
+    color: '#06b6d4',
+    gradient: 'from-cyan-400 to-teal-500',
+  },
+  {
+    key: 'functionalLimitation',
+    label: 'Task Limitation',
+    question: 'On an average day, how much do your symptoms prevent you from doing normal tasks?',
+    dailyQuestion: 'How much are your symptoms preventing you from doing normal tasks TODAY?',
+    icon: '📋',
     color: '#6366f1',
     gradient: 'from-indigo-400 to-blue-500',
   },
-  {
-    key: 'mobility',
-    label: 'Mobility',
-    icon: '🏃',
-    lowLabel: 'Cannot move freely',
-    highLabel: 'Full range of motion',
-    color: '#10b981',
-    gradient: 'from-emerald-400 to-teal-500',
-  },
 ]
 
-export function getInterpretation(key: MetricConfig['key'], value: number): string {
-  const interpretations: Record<MetricConfig['key'], Record<string, string>> = {
-    energyLevel: {
-      low: 'Very low energy is part of your baseline.',
-      mid: 'Moderate energy levels are your normal.',
-      high: 'High energy is your usual state.',
-    },
-    painLevel: {
-      low: 'Minimal pain is your usual experience.',
-      mid: 'Moderate persistent pain is part of your baseline.',
-      high: 'Significant pain is part of your daily experience.',
-    },
-    moodLevel: {
-      low: 'Lower mood is part of your usual state.',
-      mid: 'Balanced mood is your typical experience.',
-      high: 'Positive mood is your usual baseline.',
-    },
-    sleepQuality: {
-      low: 'Poor sleep quality is part of your baseline.',
-      mid: 'Moderate sleep quality is your normal.',
-      high: 'Good sleep is your usual experience.',
-    },
-    mobility: {
-      low: 'Limited mobility is part of your baseline.',
-      mid: 'Moderate mobility is your usual range.',
-      high: 'Good mobility is your typical state.',
-    },
-  }
+// ── Sleep quality labels (1–5 Likert) ─────────────────────
 
-  const level = value <= 3 ? 'low' : value <= 7 ? 'mid' : 'high'
-  return interpretations[key][level]
+export const SLEEP_QUALITY_LABELS: Record<number, string> = {
+  1: 'Very Poor',
+  2: 'Poor',
+  3: 'Fair',
+  4: 'Good',
+  5: 'Very Good',
 }

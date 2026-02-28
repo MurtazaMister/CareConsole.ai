@@ -1,138 +1,113 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useBaseline } from '../hooks/useBaseline'
-import { METRIC_CONFIGS, getInterpretation } from '../types/baseline'
+import { useLogs } from '../hooks/useLogs'
+import { useAuth } from '../hooks/useAuth'
+import TabBar from '../components/TabBar'
+import type { Tab } from '../components/TabBar'
+import OverviewTab from '../components/OverviewTab'
+import LogTab from '../components/LogTab'
+import HistoryTab from '../components/HistoryTab'
 
 export default function Dashboard() {
-  const { baseline, clearBaseline } = useBaseline()
+  const { baseline } = useBaseline()
+  const { getTodayLog } = useLogs()
+  const { currentUser, logout } = useAuth()
   const navigate = useNavigate()
-  const [showJson, setShowJson] = useState(true)
+  const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Close menu on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [menuOpen])
 
   if (!baseline) {
     return <Navigate to="/onboarding" replace />
   }
 
+  const todayLog = getTodayLog()
   const createdDate = new Date(baseline.createdAt).toLocaleDateString('en-US', {
-    weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   })
 
+  const initial = currentUser?.username?.charAt(0).toUpperCase() ?? '?'
+
+  const handleLogout = () => {
+    setMenuOpen(false)
+    logout()
+    navigate('/auth')
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-cyan-50">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-border">
-        <div className="max-w-4xl mx-auto px-6 py-5 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-text">Your Dashboard</h1>
-            <p className="text-text-muted text-sm mt-0.5">Baseline established {createdDate}</p>
+      <div className="bg-white/80 backdrop-blur-sm border-b border-border sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-6 pt-4 pb-3">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-xl font-bold text-text">HackRare</h1>
+              <p className="text-text-muted text-xs">Baseline: {createdDate}</p>
+            </div>
+
+            {/* User menu */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent text-white font-bold text-sm flex items-center justify-center hover:shadow-lg hover:shadow-primary/20 transition-all"
+              >
+                {initial}
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-12 w-56 bg-white rounded-xl border border-border shadow-lg overflow-hidden z-20">
+                  <div className="px-4 py-3 border-b border-border">
+                    <p className="text-sm font-semibold text-text">{currentUser?.username}</p>
+                    <p className="text-xs text-text-muted truncate">{currentUser?.email}</p>
+                  </div>
+                  <div className="py-1">
+                    <button
+                      onClick={() => { setMenuOpen(false); navigate('/profile-setup') }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-text hover:bg-surface transition-colors"
+                    >
+                      View Profile
+                    </button>
+                    <button
+                      onClick={() => { setMenuOpen(false); navigate('/onboarding') }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-text hover:bg-surface transition-colors"
+                    >
+                      Edit Baseline
+                    </button>
+                  </div>
+                  <div className="border-t border-border py-1">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2.5 text-sm text-danger hover:bg-red-50 transition-colors"
+                    >
+                      Log Out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => navigate('/onboarding')}
-              className="px-5 py-2.5 rounded-xl font-medium text-primary border-2 border-primary/20 hover:bg-primary/5 hover:border-primary/40 transition-all duration-200"
-            >
-              Edit Baseline
-            </button>
-            <button
-              onClick={clearBaseline}
-              className="px-5 py-2.5 rounded-xl font-medium text-danger/70 hover:text-danger hover:bg-danger/5 transition-all duration-200"
-            >
-              Reset
-            </button>
-          </div>
+          <TabBar active={activeTab} onChange={setActiveTab} hasLoggedToday={!!todayLog} />
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        {/* Welcome Card */}
-        <div className="bg-gradient-to-r from-primary to-primary-dark rounded-2xl p-8 text-white mb-8 shadow-lg shadow-primary/20">
-          <h2 className="text-2xl font-bold mb-2">Your Baseline is Set</h2>
-          <p className="text-white/80 leading-relaxed">
-            This is your personal reference point. Future symptom tracking will compare against these values to help detect flares early.
-          </p>
-        </div>
-
-        {/* Metric Cards Grid */}
-        <h3 className="text-lg font-semibold text-text mb-4">Baseline Summary</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          {METRIC_CONFIGS.map((config) => {
-            const value = baseline[config.key]
-            return (
-              <div
-                key={config.key}
-                className="bg-white rounded-2xl border border-border p-5 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-2xl group-hover:scale-110 transition-transform duration-300">
-                      {config.icon}
-                    </span>
-                    <span className="font-semibold text-text">{config.label}</span>
-                  </div>
-                  <span
-                    className="text-2xl font-bold"
-                    style={{ color: config.color }}
-                  >
-                    {value}
-                    <span className="text-sm font-normal text-text-muted">/10</span>
-                  </span>
-                </div>
-
-                {/* Bar */}
-                <div className="h-2.5 bg-surface-dark rounded-full overflow-hidden mb-3">
-                  <div
-                    className="h-full rounded-full transition-all duration-700 ease-out"
-                    style={{
-                      width: `${(value / 10) * 100}%`,
-                      backgroundColor: config.color,
-                    }}
-                  />
-                </div>
-
-                {/* Interpretation */}
-                <p className="text-xs text-text-muted leading-relaxed">
-                  {getInterpretation(config.key, value)}
-                </p>
-              </div>
-            )
-          })}
-
-          {/* Notes Card */}
-          {baseline.notes && (
-            <div className="bg-white rounded-2xl border border-border p-5 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 sm:col-span-2 lg:col-span-3">
-              <div className="flex items-center gap-2.5 mb-3">
-                <span className="text-2xl">📝</span>
-                <span className="font-semibold text-text">Notes</span>
-              </div>
-              <p className="text-sm text-text-muted leading-relaxed">{baseline.notes}</p>
-            </div>
-          )}
-        </div>
-
-        {/* JSON Output */}
-        <div className="bg-white rounded-2xl border border-border overflow-hidden">
-          <button
-            onClick={() => setShowJson(!showJson)}
-            className="w-full px-6 py-4 flex items-center justify-between hover:bg-surface transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <span className="text-lg">📋</span>
-              <span className="font-semibold text-text">Baseline Data (JSON)</span>
-            </div>
-            <span className={`text-text-muted transition-transform duration-200 ${showJson ? 'rotate-180' : ''}`}>
-              ▼
-            </span>
-          </button>
-          {showJson && (
-            <div className="px-6 pb-6">
-              <pre className="bg-slate-900 text-emerald-400 rounded-xl p-5 text-sm overflow-x-auto font-mono leading-relaxed">
-                {JSON.stringify(baseline, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
+      {/* Tab Content */}
+      <div className="max-w-4xl mx-auto px-6 py-6">
+        {activeTab === 'overview' && <OverviewTab onSwitchTab={setActiveTab} />}
+        {activeTab === 'log' && <LogTab onSwitchTab={setActiveTab} />}
+        {activeTab === 'history' && <HistoryTab onSwitchTab={setActiveTab} />}
       </div>
     </div>
   )

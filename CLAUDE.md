@@ -71,19 +71,19 @@ The system should feel:
 
 ## Current Phase
 
-We are currently building:
+**Phase 1 – Baseline Setup Dashboard** ✅ COMPLETE
 
-**Phase 1 – Baseline Setup Dashboard**
+**Phase 2 – Daily Logging Dashboard** ✅ COMPLETE
 
 This includes:
 
-* One-time baseline creation
-* Baseline storage
-* Dashboard display
-* Editable baseline
-* Clean routing logic
+* Daily symptom logging with rich clinical data (symptoms, pain locations, medication adherence, functional impact, triggers, timing)
+* Baseline deviation comparison with real-time flare risk calculation
+* Log history view with expandable details
+* SVG trend chart for deviation scores
+* JSON data export throughout
 
-No backend or AI logic is included in this phase.
+No backend or AI logic is included yet.
 
 ---
 
