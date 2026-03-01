@@ -34,11 +34,17 @@ export default function Dashboard() {
   }
 
   const todayLog = getTodayLog()
-  const createdDate = new Date(baseline.createdAt).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
+  const baselineDateDisplay = baseline.baselineDate
+    ? new Date(baseline.baselineDate + 'T00:00:00').toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : new Date(baseline.createdAt).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
 
   const initial = currentUser?.username?.charAt(0).toUpperCase() ?? '?'
 
@@ -56,7 +62,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-xl font-bold text-text">HackRare</h1>
-              <p className="text-text-muted text-xs">Baseline: {createdDate}</p>
+              <p className="text-text-muted text-xs">Baseline: {baselineDateDisplay}</p>
             </div>
 
             {/* User menu */}

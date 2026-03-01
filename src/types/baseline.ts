@@ -5,8 +5,10 @@ export interface BaselineProfile {
   primaryCondition: string
   conditionDurationMonths: number
 
+  // Effective date of this baseline (YYYY-MM-DD)
+  baselineDate: string
+
   // Core symptoms (NRS 0–10, clinically standard)
-  mainSymptomSeverity: number
   painLevel: number
   fatigueLevel: number
   breathingDifficulty: number
@@ -24,7 +26,7 @@ export interface BaselineProfile {
 // ── Core symptom metrics (shared between baseline & daily) ─
 
 export interface SymptomMetric {
-  key: 'mainSymptomSeverity' | 'painLevel' | 'fatigueLevel' | 'breathingDifficulty' | 'functionalLimitation'
+  key: 'painLevel' | 'fatigueLevel' | 'breathingDifficulty' | 'functionalLimitation'
   label: string
   question: string
   dailyQuestion: string
@@ -34,15 +36,6 @@ export interface SymptomMetric {
 }
 
 export const SYMPTOM_METRICS: SymptomMetric[] = [
-  {
-    key: 'mainSymptomSeverity',
-    label: 'Main Symptom',
-    question: 'On an average day, how severe is your main symptom?',
-    dailyQuestion: 'How severe is your main symptom TODAY?',
-    icon: '🎯',
-    color: '#8b5cf6',
-    gradient: 'from-violet-400 to-purple-500',
-  },
   {
     key: 'painLevel',
     label: 'Body Pain',

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useBaseline } from '../hooks/useBaseline'
 import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
 import type { BaselineProfile } from '../types/baseline'
+import { getTodayDateString } from '../types/dailyLog'
 import MiniSlider from '../components/MiniSlider'
 import LikertScale from '../components/LikertScale'
 import TimeInput from '../components/TimeInput'
@@ -24,14 +25,13 @@ export default function Onboarding() {
   const [symptoms, setSymptoms] = useState<Record<string, number>>(() => {
     if (baseline) {
       return {
-        mainSymptomSeverity: baseline.mainSymptomSeverity,
         painLevel: baseline.painLevel,
         fatigueLevel: baseline.fatigueLevel,
         breathingDifficulty: baseline.breathingDifficulty,
         functionalLimitation: baseline.functionalLimitation,
       }
     }
-    return { mainSymptomSeverity: 0, painLevel: 0, fatigueLevel: 0, breathingDifficulty: 0, functionalLimitation: 0 }
+    return { painLevel: 0, fatigueLevel: 0, breathingDifficulty: 0, functionalLimitation: 0 }
   })
   const [sleepHours, setSleepHours] = useState(baseline?.sleepHours ?? 7)
   const [sleepQuality, setSleepQuality] = useState(baseline?.sleepQuality ?? 3)
@@ -50,7 +50,8 @@ export default function Onboarding() {
     const profile: BaselineProfile = {
       primaryCondition: condition.trim(),
       conditionDurationMonths: duration,
-      ...symptoms as Pick<BaselineProfile, 'mainSymptomSeverity' | 'painLevel' | 'fatigueLevel' | 'breathingDifficulty' | 'functionalLimitation'>,
+      baselineDate: baseline?.baselineDate ?? getTodayDateString(),
+      ...symptoms as Pick<BaselineProfile, 'painLevel' | 'fatigueLevel' | 'breathingDifficulty' | 'functionalLimitation'>,
       sleepHours,
       sleepQuality,
       usualBedtime: bedtime,
@@ -127,6 +128,7 @@ export default function Onboarding() {
                 )}
               </div>
             </div>
+
           </div>
         )}
 
@@ -179,7 +181,7 @@ export default function Onboarding() {
             <div className="bg-white rounded-2xl border border-border p-6">
               <h3 className="font-semibold text-text mb-4">Your Baseline Profile</h3>
 
-              <div className="bg-surface rounded-xl p-4 mb-4">
+              <div className="bg-surface rounded-xl p-4 mb-4 cursor-pointer hover:bg-surface-dark transition-colors" onClick={() => setStep(0)}>
                 <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Condition</p>
                 <p className="font-bold text-text">{condition}</p>
                 <p className="text-xs text-text-muted mt-1">{duration} months</p>

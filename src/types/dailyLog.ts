@@ -6,7 +6,6 @@ export interface DailyLog {
   date: string // YYYY-MM-DD
 
   // Core symptoms (NRS 0–10, same as baseline)
-  mainSymptomSeverity: number
   painLevel: number
   fatigueLevel: number
   breathingDifficulty: number
@@ -60,7 +59,6 @@ export const RED_FLAGS = [
 // ── Deviation & flare logic ───────────────────────────────
 
 const CORE_KEYS = [
-  'mainSymptomSeverity',
   'painLevel',
   'fatigueLevel',
   'breathingDifficulty',
@@ -68,7 +66,7 @@ const CORE_KEYS = [
 ] as const
 
 export function calculateDeviation(
-  log: Pick<DailyLog, 'mainSymptomSeverity' | 'painLevel' | 'fatigueLevel' | 'breathingDifficulty' | 'functionalLimitation'>,
+  log: Pick<DailyLog, 'painLevel' | 'fatigueLevel' | 'breathingDifficulty' | 'functionalLimitation'>,
   baseline: BaselineProfile,
 ): { perMetric: Record<string, number>; total: number } {
   const perMetric: Record<string, number> = {}
@@ -101,13 +99,16 @@ export const FLARE_RISK_CONFIG: Record<FlareRisk, { label: string; color: string
 
 // ── Helpers ───────────────────────────────────────────────
 
+export function formatDateString(date: Date): string {
+  return date.toISOString().split('T')[0]
+}
+
 export function getTodayDateString(): string {
-  return new Date().toISOString().split('T')[0]
+  return formatDateString(new Date())
 }
 
 export function createEmptyLogForm(baseline?: BaselineProfile) {
   return {
-    mainSymptomSeverity: baseline?.mainSymptomSeverity ?? 0,
     painLevel: baseline?.painLevel ?? 0,
     fatigueLevel: baseline?.fatigueLevel ?? 0,
     breathingDifficulty: baseline?.breathingDifficulty ?? 0,
