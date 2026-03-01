@@ -21,6 +21,7 @@ import {
 import QuestionRenderer from './log/QuestionRenderer'
 import { useAuth } from '../hooks/useAuth'
 import { downloadLogFormPdf } from '../lib/generateLogFormPdf'
+import SymptomRadarChart from './charts/SymptomRadarChart'
 
 /** Read a value from baseline, checking responses map first then legacy top-level field */
 function readBaselineVal(baseline: FormValues, key: string): unknown {
@@ -46,7 +47,7 @@ interface LogTabProps {
 export default function LogTab({ onSwitchTab }: LogTabProps) {
   const { baseline } = useBaseline()
   const { addLog, getLogByDate } = useLogs()
-  const { schema, loading: schemaLoading } = useSchema()
+  const { schema, loading: schemaLoading, activeMetrics } = useSchema()
   const { currentUser } = useAuth()
 
   const today = getTodayDateString()
@@ -291,6 +292,55 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
               {todayLog.notes && (
                 <p className="text-xs text-text-muted mt-2 italic">"{todayLog.notes}"</p>
               )}
+            </div>
+
+            {/* Today vs Baseline Radar */}
+            <div className="bg-white rounded-xl border border-border p-4 mb-4">
+              <h3 className="text-sm font-semibold text-text mb-1">Today vs Baseline</h3>
+              <SymptomRadarChart baseline={baseline} todayLog={todayLog} metrics={activeMetrics} />
+            </div>
+
+            {/* Metric Comparison Cards */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {activeMetrics.map((metric) => {
+                const baseValue = (readBaselineVal(baseline as FormValues, metric.baselineKey ?? metric.key) as number) ?? 0
+                const todayValue = (readLogVal(todayLog as FormValues, metric.key) as number) ?? 0
+                const diff = todayValue - baseValue
+                return (
+                  <div key={metric.key} className="bg-surface rounded-xl p-3 group hover:shadow-md transition-all">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-medium text-text truncate">{metric.label}</span>
+                      {diff !== 0 && (
+                        <span
+                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                          style={{
+                            color: diff > 0 ? '#ef4444' : '#10b981',
+                            backgroundColor: diff > 0 ? '#fef2f2' : '#f0fdf4',
+                          }}
+                        >
+                          {diff > 0 ? '\u2191' : '\u2193'}{Math.abs(diff)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] text-text-muted w-10 shrink-0">Base</span>
+                        <div className="flex-1 h-1.5 bg-primary/10 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-primary/30 transition-all duration-700" style={{ width: `${(baseValue / 10) * 100}%` }} />
+                        </div>
+                        <span className="text-[10px] text-text-muted w-4 text-right">{baseValue}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] text-text-muted w-10 shrink-0">Today</span>
+                        <div className="flex-1 h-1.5 bg-primary/10 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-primary transition-all duration-700" style={{ width: `${(todayValue / 10) * 100}%` }} />
+                        </div>
+                        <span className="text-[10px] font-bold text-primary w-4 text-right">{todayValue}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
 
             <button

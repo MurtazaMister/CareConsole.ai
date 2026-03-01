@@ -641,6 +641,52 @@ Respond ONLY with valid JSON.`,
   }
 }
 
+// ── Summarize chart data with AI ─────────────────────────
+
+export async function summarizeChart(req: Request, res: Response) {
+  const { chartTitle, chartData } = req.body
+  if (!chartTitle || !chartData) {
+    res.status(400).json({ error: 'chartTitle and chartData are required' })
+    return
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a health data analyst for a patient tracking app. You summarize chart data in plain, empathetic language a patient can understand.
+
+Rules:
+1. Write 2-3 short sentences max
+2. Highlight the most important trend or pattern
+3. If things are improving, acknowledge it positively
+4. If things are worsening, be gentle but honest
+5. Use simple language, no medical jargon
+6. Do not give medical advice — just describe what the data shows`,
+        },
+        {
+          role: 'user',
+          content: `Summarize this "${chartTitle}" chart data for the patient:\n${typeof chartData === 'string' ? chartData : JSON.stringify(chartData)}`,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 200,
+    })
+
+    const summary = completion.choices[0]?.message?.content?.trim() ?? ''
+    res.json({ summary })
+  } catch (err) {
+    const error = err as Error & { status?: number }
+    if (error.status === 429) {
+      res.status(429).json({ error: 'AI service rate limit reached. Please try again.' })
+      return
+    }
+    res.status(500).json({ error: 'Failed to generate summary' })
+  }
+}
+
 // ── Clean up speech-to-text transcription ────────────────
 
 export async function cleanNotes(req: Request, res: Response) {

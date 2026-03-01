@@ -4,13 +4,19 @@ interface ChartSectionProps {
   title: string
   info?: string
   defaultOpen?: boolean
+  /** Serialized chart data passed to AI for summarization */
+  chartData?: unknown
   children: React.ReactNode
 }
 
-export default function ChartSection({ title, info, defaultOpen = true, children }: ChartSectionProps) {
+export default function ChartSection({ title, info, defaultOpen = true, chartData, children }: ChartSectionProps) {
   const [open, setOpen] = useState(defaultOpen)
   const [showInfo, setShowInfo] = useState(false)
   const infoRef = useRef<HTMLDivElement>(null)
+
+  const [summary, setSummary] = useState('')
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryOpen, setSummaryOpen] = useState(false)
 
   // Close tooltip on outside click
   useEffect(() => {
@@ -23,6 +29,43 @@ export default function ChartSection({ title, info, defaultOpen = true, children
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [showInfo])
+
+  const handleAiSummary = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+
+    // Toggle off if already showing
+    if (summaryOpen && summary) {
+      setSummaryOpen(false)
+      return
+    }
+
+    // If already fetched, just show it
+    if (summary) {
+      setSummaryOpen(true)
+      return
+    }
+
+    setSummaryLoading(true)
+    setSummaryOpen(true)
+    try {
+      const res = await fetch('/api/ai/summarize-chart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ chartTitle: title, chartData }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setSummary(data.summary || 'No summary available.')
+      } else {
+        setSummary('Could not generate summary. Please try again.')
+      }
+    } catch {
+      setSummary('Something went wrong. Please try again.')
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-border overflow-hidden">
@@ -55,17 +98,68 @@ export default function ChartSection({ title, info, defaultOpen = true, children
             </div>
           )}
         </div>
-        <svg
-          className={`w-4 h-4 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
+
+        <div className="flex items-center gap-2">
+          {/* AI Summary button */}
+          {chartData && open && (
+            <span
+              onClick={handleAiSummary}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                summaryOpen
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-text-muted hover:text-primary hover:bg-primary/5'
+              }`}
+            >
+              {summaryLoading ? (
+                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="10" className="opacity-25" />
+                  <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" fill="currentColor" />
+                </svg>
+              ) : (
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              )}
+              AI Summary
+            </span>
+          )}
+
+          <svg
+            className={`w-4 h-4 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
       </button>
-      {open && <div className="px-5 pb-5">{children}</div>}
+
+      {open && (
+        <div className="px-5 pb-5">
+          {/* AI Summary panel */}
+          {summaryOpen && (
+            <div className="mb-4 p-3.5 rounded-xl bg-gradient-to-r from-primary/5 to-indigo-50 border border-primary/15">
+              <div className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-primary shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+                {summaryLoading ? (
+                  <p className="text-xs text-text-muted animate-pulse">Analyzing your data...</p>
+                ) : (
+                  <p className="text-xs text-text leading-relaxed">{summary}</p>
+                )}
+              </div>
+            </div>
+          )}
+          {children}
+        </div>
+      )}
     </div>
   )
 }
