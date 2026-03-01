@@ -6,6 +6,12 @@ interface LikertScaleProps {
   baselineValue?: number
   showIcon?: boolean
   variant?: 'accent' | 'neutral'
+  /** Custom label (defaults to "Sleep Quality") */
+  label?: string
+  /** Custom labels per value (defaults to SLEEP_QUALITY_LABELS) */
+  labels?: Record<number, string>
+  /** Number of points on the scale (defaults to 5) */
+  scale?: number
 }
 
 export default function LikertScale({
@@ -14,22 +20,28 @@ export default function LikertScale({
   baselineValue,
   showIcon = true,
   variant = 'accent',
+  label = 'Sleep Quality',
+  labels: customLabels,
+  scale = 5,
 }: LikertScaleProps) {
   const isNeutral = variant === 'neutral'
+  const labelMap = customLabels ?? SLEEP_QUALITY_LABELS
+  const points = Array.from({ length: scale }, (_, i) => i + 1)
+
   return (
     <div className="bg-white rounded-xl border border-border p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           {showIcon ? <span className="text-xl">😴</span> : null}
-          <span className="font-medium text-text text-sm">Sleep Quality</span>
+          <span className="font-medium text-text text-sm">{label}</span>
         </div>
         <span className={`text-sm font-bold ${isNeutral ? 'text-slate-600' : 'text-indigo-500'}`}>
-          {SLEEP_QUALITY_LABELS[value]}
+          {labelMap[value]}
         </span>
       </div>
 
       <div className="flex gap-2">
-        {[1, 2, 3, 4, 5].map((n) => (
+        {points.map((n) => (
           <button
             key={n}
             onClick={() => onChange(n)}
@@ -43,7 +55,7 @@ export default function LikertScale({
             `}
           >
             <span className="text-lg block">{n}</span>
-            <span className="text-[9px] block mt-0.5 leading-tight">{SLEEP_QUALITY_LABELS[n]}</span>
+            <span className="text-[9px] block mt-0.5 leading-tight">{labelMap[n]}</span>
           </button>
         ))}
       </div>
@@ -51,7 +63,7 @@ export default function LikertScale({
       {baselineValue !== undefined && (
         <div className="flex items-center gap-1.5 mt-3 text-[10px] text-text-muted">
           <span className="w-2 h-2 rounded-full bg-surface-dark inline-block" />
-          Baseline: {SLEEP_QUALITY_LABELS[baselineValue]} ({baselineValue}/5)
+          Baseline: {labelMap[baselineValue]} ({baselineValue}/{scale})
         </div>
       )}
     </div>

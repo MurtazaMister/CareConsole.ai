@@ -24,7 +24,7 @@ export interface DailyLog {
   bedtime: string       // HH:MM
   wakeTime: string      // HH:MM
 
-  // Free text (max 150 chars)
+  // Free text
   notes: string
 
   // Computed on save
