@@ -25,7 +25,7 @@ const BaselineSchema = new Schema<IBaseline>({
   fatigueLevel: { type: Number, required: true, min: 0, max: 10 },
   breathingDifficulty: { type: Number, required: true, min: 0, max: 10 },
   functionalLimitation: { type: Number, required: true, min: 0, max: 10 },
-  sleepHours: { type: Number, required: true, min: 3, max: 12 },
+  sleepHours: { type: Number, required: true, min: 0, max: 24 },
   sleepQuality: { type: Number, required: true, min: 1, max: 5 },
   usualBedtime: { type: String, required: true, match: /^\d{2}:\d{2}$/ },
   usualWakeTime: { type: String, required: true, match: /^\d{2}:\d{2}$/ },

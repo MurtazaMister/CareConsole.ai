@@ -47,8 +47,8 @@ export async function upsertBaseline(req: Request, res: Response) {
     }
   }
 
-  if (typeof sleepHours !== 'number' || sleepHours < 3 || sleepHours > 12) {
-    res.status(400).json({ error: 'Sleep hours must be between 3 and 12' })
+  if (typeof sleepHours !== 'number' || sleepHours < 0 || sleepHours > 24) {
+    res.status(400).json({ error: 'Sleep hours must be between 0 and 24' })
     return
   }
   if (typeof sleepQuality !== 'number' || sleepQuality < 1 || sleepQuality > 5) {

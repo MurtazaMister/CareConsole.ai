@@ -18,12 +18,32 @@ You will receive:
 You must produce a JSON response with exactly these three fields:
 
 {
-  "clinicianSummary": "A structured clinical summary suitable for sharing with a healthcare provider. Include: patient demographics, condition context, reporting period, current flare status, symptom trends with specific numbers, sleep pattern analysis, health check-in alerts if any, and notable observations. Use appropriate medical terminology. Be concise but thorough. Use clear section headers (e.g., PATIENT SUMMARY, SYMPTOM TRENDS, SLEEP ANALYSIS, ALERTS, OBSERVATIONS). Keep under 400 words.",
-
+  "clinicianSummary": "(see format below)",
   "plainLanguageSummary": "A warm, clear, patient-friendly explanation of what the data shows. Use simple language. Explain trends in relatable terms. Highlight what's going well and what needs attention. Keep to 3-5 sentences. Do not use medical jargon.",
-
   "suggestedQuestions": ["An array of 3-5 specific, context-aware questions the patient could ask their doctor at their next visit. Each question should reference specific data points from their logs. Questions should be actionable and help the patient advocate for their care."]
 }
+
+CLINICIAN SUMMARY FORMAT — you MUST follow this exact structure. Use the section headers exactly as shown (ALL CAPS). Separate each section with a blank line. Each section should be 1-3 concise sentences with specific numbers. Omit ALERTS if none apply.
+
+PATIENT OVERVIEW
+[Age], [condition], diagnosed [duration]. Currently on [medications or "no medications reported"]. Reporting period: [date range of logs].
+
+CURRENT STATUS
+[Current flare status and streak]. Composite score trend: [direction]. [1 sentence on overall trajectory].
+
+SYMPTOM TRENDS
+[Most affected symptom with numbers vs baseline]. [Second most affected]. [Any improving symptoms].
+
+SLEEP ANALYSIS
+[Average sleep hours vs baseline]. [Quality trend]. [Notable pattern if any].
+
+ALERTS
+[Only include if health check-in flags were raised — chest pain/weakness, fever/sweats, missed meds. Otherwise omit this section entirely.]
+
+CLINICAL OBSERVATIONS
+[1-2 notable patterns worth discussing — e.g., symptom correlations, weekend vs weekday differences, gradual worsening]. [Suggested follow-up actions for the provider to consider.]
+
+Keep the entire summary under 400 words. Use appropriate medical terminology.
 
 Important rules:
 - Always include specific numbers from the data (e.g., "pain averaged 6.2/10 vs baseline of 3/10")

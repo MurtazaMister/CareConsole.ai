@@ -15,7 +15,7 @@ export interface BaselineProfile {
   functionalLimitation: number  // how much symptoms prevent normal tasks
 
   // Sleep
-  sleepHours: number            // 3–12
+  sleepHours: number            // 0–24
   sleepQuality: number          // 1–5 Likert
   usualBedtime: string          // HH:MM
   usualWakeTime: string         // HH:MM

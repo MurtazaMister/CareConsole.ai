@@ -34,7 +34,7 @@ const DailyLogSchema = new Schema<IDailyLog>({
     feverSweatsChills: { type: Boolean, default: false },
     missedOrNewMedication: { type: Boolean, default: false },
   },
-  sleepHours: { type: Number, required: true, min: 3, max: 12 },
+  sleepHours: { type: Number, required: true, min: 0, max: 24 },
   sleepQuality: { type: Number, required: true, min: 1, max: 5 },
   bedtime: { type: String, required: true, match: /^\d{2}:\d{2}$/ },
   wakeTime: { type: String, required: true, match: /^\d{2}:\d{2}$/ },
