@@ -19,6 +19,7 @@ import {
   type FormPage,
 } from '../constants/logFormSchema'
 import QuestionRenderer from './log/QuestionRenderer'
+import VoiceButton from './VoiceButton'
 import { useAuth } from '../hooks/useAuth'
 import { downloadLogFormPdf } from '../lib/generateLogFormPdf'
 import SymptomRadarChart from './charts/SymptomRadarChart'
@@ -37,7 +38,8 @@ function readLogVal(log: FormValues, key: string): unknown {
   return log[key]
 }
 
-// Steps = schema pages + review page at the end
+// Steps = schema pages + notes page + review page at the end
+const NOTES_STEP = { title: 'Notes & Voice Input', subtitle: 'Add notes by typing or speaking' }
 const REVIEW_STEP = { title: 'Review & Save', subtitle: 'Check your entry before saving' }
 
 interface LogTabProps {
@@ -92,14 +94,19 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
 
   const showForm = !isToday || editing
 
-  const totalSteps = schema.pages.length + 1 // +1 for review
+  const totalSteps = schema.pages.length + 2 // +1 for notes, +1 for review
   const progress = ((step + 1) / totalSteps) * 100
-  const isReviewStep = step === schema.pages.length
-  const currentPage: FormPage | null = isReviewStep ? null : schema.pages[step]
+  const isNotesStep = step === schema.pages.length
+  const isReviewStep = step === schema.pages.length + 1
+  const currentPage: FormPage | null = (isNotesStep || isReviewStep) ? null : schema.pages[step]
+
+  const [rawTranscript, setRawTranscript] = useState('')
 
   const stepInfo = isReviewStep
     ? REVIEW_STEP
-    : { title: currentPage!.title, subtitle: currentPage!.subtitle }
+    : isNotesStep
+      ? NOTES_STEP
+      : { title: currentPage!.title, subtitle: currentPage!.subtitle }
 
   const [saving, setSaving] = useState(false)
 
@@ -210,7 +217,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
       }
 
       setForm(newForm)
-      setStep(schema.pages.length) // Jump to review step
+      setStep(schema.pages.length + 1) // Jump to review step
       setEditing(true)
     } catch {
       setScanError('Something went wrong. Please try again.')
@@ -535,6 +542,66 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
     )
   }
 
+  // ── Render notes page ───────────────────────────────────
+
+  const renderNotesPage = () => (
+    <div className="space-y-4">
+      {/* Voice Input — prominent */}
+      <div className="bg-white rounded-2xl border border-border p-6">
+        <div className="text-center mb-5">
+          <h3 className="font-semibold text-text mb-1">Voice Notes</h3>
+          <p className="text-xs text-text-muted">
+            Speak naturally — AI will clean up grammar and gibberish automatically
+          </p>
+        </div>
+
+        <VoiceButton
+          size="large"
+          onRawTranscript={(raw) => setRawTranscript(raw)}
+          onTranscription={(cleaned) => {
+            const current = ((form.notes as string) || '').trim()
+            setForm((prev) => ({ ...prev, notes: current ? `${current}\n${cleaned}` : cleaned }))
+            setRawTranscript('')
+          }}
+        />
+
+        {/* Show raw → cleaned comparison */}
+        {rawTranscript && (
+          <div className="mt-4 bg-amber-50 rounded-xl border border-amber-200 p-3">
+            <p className="text-[10px] font-medium text-amber-700 mb-1">Raw voice input:</p>
+            <p className="text-xs text-amber-900 italic">"{rawTranscript}"</p>
+          </div>
+        )}
+      </div>
+
+      {/* Text input — manual typing */}
+      <div className="bg-white rounded-2xl border border-border p-5">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-text">
+            Your Notes <span className="text-text-muted font-normal">(optional)</span>
+          </label>
+          <VoiceButton
+            size="compact"
+            onRawTranscript={(raw) => setRawTranscript(raw)}
+            onTranscription={(cleaned) => {
+              const current = ((form.notes as string) || '').trim()
+              setForm((prev) => ({ ...prev, notes: current ? `${current}\n${cleaned}` : cleaned }))
+              setRawTranscript('')
+            }}
+          />
+        </div>
+        <textarea
+          value={(form.notes as string) || ''}
+          onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+          placeholder="Type your notes here, or use the mic button above to dictate..."
+          className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-text placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none transition-all"
+          rows={4}
+        />
+        <p className="text-right text-[10px] text-text-muted mt-1">{((form.notes as string) || '').length} characters</p>
+      </div>
+    </div>
+  )
+
   // ── Render review page ───────────────────────────────────
 
   const renderReviewPage = () => (
@@ -601,6 +668,14 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
           <p className="font-bold text-text font-mono text-xs">{form.bedtime as string}{'\u2013'}{form.wakeTime as string}</p>
         </div>
       </div>
+
+      {/* Notes summary */}
+      {(form.notes as string)?.trim() && (
+        <div className="bg-white rounded-2xl border border-border p-5">
+          <h3 className="font-semibold text-text mb-2 text-sm">Notes</h3>
+          <p className="text-sm text-text-muted whitespace-pre-wrap">"{form.notes as string}"</p>
+        </div>
+      )}
 
     </div>
   )
@@ -671,6 +746,9 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
 
       {/* Question pages from schema */}
       {currentPage && renderQuestionPage(currentPage)}
+
+      {/* Notes page */}
+      {isNotesStep && renderNotesPage()}
 
       {/* Review page */}
       {isReviewStep && renderReviewPage()}
