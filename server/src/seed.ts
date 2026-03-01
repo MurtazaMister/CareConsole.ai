@@ -65,7 +65,13 @@ async function seed() {
 
   // Generate 14 days of logs with realistic patterns
   // Simulate a mild flare building up around days 8-10, then recovering
-  const logPatterns = [
+  interface LogPattern {
+    pain: number; fatigue: number; breath: number; func: number
+    sleep: number; quality: number; bed: string; wake: string
+    flags: { chestPainWeaknessConfusion?: boolean; feverSweatsChills?: boolean; missedOrNewMedication?: boolean }
+    notes: string
+  }
+  const logPatterns: LogPattern[] = [
     // Day 1-3: Near baseline, stable
     { pain: 4, fatigue: 5, breath: 2, func: 3, sleep: 7, quality: 3, bed: '23:00', wake: '07:00', flags: {}, notes: 'Feeling about normal today.' },
     { pain: 3, fatigue: 4, breath: 2, func: 3, sleep: 7, quality: 4, bed: '22:30', wake: '06:30', flags: {}, notes: 'Good day, managed a short walk.' },

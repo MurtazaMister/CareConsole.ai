@@ -48,12 +48,7 @@ export default function Onboarding() {
   const progress = ((step + 1) / totalSteps) * 100
 
   const canProceedStep0 = condition.trim().length > 0 && duration > 0
-  const timeToMinutes = (t: string) => {
-    const [h, m] = t.split(':').map(Number)
-    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0)
-  }
-  const isSleepOrderValid = timeToMinutes(wakeTime) > timeToMinutes(bedtime)
-  const canSubmit = confirmed && canProceedStep0 && isSleepOrderValid
+  const canSubmit = confirmed && canProceedStep0
 
   const getDurationMonths = () => {
     if (durationUnit === 'weeks') return Math.max(0, Math.round(duration / 4))
@@ -185,12 +180,9 @@ export default function Onboarding() {
         {/* Step 1: Symptom Baseline */}
         {step === 1 && (
           <div className="space-y-3">
-            <p className="text-center text-text-muted text-xs mb-4">
-              0 = none &middot; 10 = worst imaginable
-            </p>
             {SYMPTOM_METRICS.map((metric) => (
-              <div key={metric.key} className="bg-white rounded-xl border border-border p-4 hover:shadow-md transition-all">
-                <p className="text-sm text-text-muted mb-3">{metric.question}</p>
+              <div key={metric.key} className="bg-white rounded-xl border border-border px-4 py-3">
+                <p className="text-sm font-medium text-text mb-2">{metric.question}</p>
                 <MiniSlider
                   label={metric.label}
                   icon=""
@@ -199,8 +191,6 @@ export default function Onboarding() {
                   onChange={(v) => setSymptoms((prev) => ({ ...prev, [metric.key]: v }))}
                   color="#64748b"
                   trackStyle="intensity"
-                  lowLabel="None"
-                  highLabel="Worst imaginable"
                 />
               </div>
             ))}
@@ -227,16 +217,9 @@ export default function Onboarding() {
                 </div>
               </div>
             </div>
-            <LikertScale value={sleepQuality} onChange={setSleepQuality} showIcon={false} variant="neutral" boxStyle="intensity" />
+            <LikertScale value={sleepQuality} onChange={setSleepQuality} showIcon={false} variant="neutral" />
             <TimeInput label="Usual Bedtime" icon="🌙" value={bedtime} onChange={setBedtime} showIcon={false} showDropdownArrow />
             <TimeInput label="Usual Wake Time" icon="☀️" value={wakeTime} onChange={setWakeTime} showIcon={false} showDropdownArrow />
-            {!isSleepOrderValid && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                <p className="text-red-600 text-xs">
-                  Usual wake time must be later than usual bedtime.
-                </p>
-              </div>
-            )}
           </div>
         )}
 
@@ -346,9 +329,9 @@ export default function Onboarding() {
           ) : (
             <button
               onClick={() => setStep(step + 1)}
-              disabled={(step === 0 && !canProceedStep0) || (step === 2 && !isSleepOrderValid)}
+              disabled={step === 0 && !canProceedStep0}
               className={`px-8 py-3 rounded-xl font-semibold text-white transition-all duration-200 cursor-pointer ${
-                (step === 0 && !canProceedStep0) || (step === 2 && !isSleepOrderValid)
+                step === 0 && !canProceedStep0
                   ? 'bg-gray-300 cursor-not-allowed'
                   : 'bg-gradient-to-r from-primary to-primary-dark hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5'
               }`}
@@ -363,7 +346,7 @@ export default function Onboarding() {
           {Array.from({ length: totalSteps }, (_, i) => (
             <button
               key={i}
-              onClick={() => (i === 0 || canProceedStep0) && (i < 3 || isSleepOrderValid) ? setStep(i) : undefined}
+              onClick={() => (i === 0 || canProceedStep0) ? setStep(i) : undefined}
               className={`rounded-full transition-all duration-300 ${
                 i === step ? 'w-8 h-2 bg-primary' : i < step ? 'w-2 h-2 bg-primary/40' : 'w-2 h-2 bg-surface-dark'
               }`}

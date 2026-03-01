@@ -91,10 +91,10 @@ export function calculateFlareRisk(
   return 'low'
 }
 
-export const FLARE_RISK_CONFIG: Record<FlareRisk, { label: string; color: string; icon: string }> = {
-  low: { label: 'Low Risk', color: '#10b981', icon: '✅' },
-  medium: { label: 'Medium Risk', color: '#f59e0b', icon: '⚠️' },
-  high: { label: 'High Risk', color: '#ef4444', icon: '🔴' },
+export const FLARE_RISK_CONFIG: Record<FlareRisk, { label: string; color: string }> = {
+  low: { label: 'Low Risk', color: '#10b981' },
+  medium: { label: 'Medium Risk', color: '#f59e0b' },
+  high: { label: 'High Risk', color: '#ef4444' },
 }
 
 // ── Helpers ───────────────────────────────────────────────

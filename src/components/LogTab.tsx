@@ -181,7 +181,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
               backgroundColor: FLARE_RISK_CONFIG[liveFlareRisk].color + '15',
             }}
           >
-            {FLARE_RISK_CONFIG[liveFlareRisk].icon} Dev: {liveTotal}
+            {FLARE_RISK_CONFIG[liveFlareRisk].label}
           </span>
         </div>
         <div className="h-1.5 bg-surface-dark rounded-full overflow-hidden">
@@ -195,18 +195,17 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
       {/* Step 0: Core Symptoms */}
       {step === 0 && (
         <div className="space-y-3">
-          <p className="text-center text-text-muted text-xs mb-2">0 = none &middot; 10 = worst imaginable</p>
           {SYMPTOM_METRICS.map((metric) => (
-            <div key={metric.key} className="bg-white rounded-xl border border-border p-4 hover:shadow-md transition-all">
-              <p className="text-xs text-text-muted mb-2">{metric.dailyQuestion}</p>
+            <div key={metric.key} className="bg-white rounded-xl border border-border px-4 py-3">
+              <p className="text-sm font-medium text-text mb-2">{metric.dailyQuestion}</p>
               <MiniSlider
                 label={metric.label}
-                icon={metric.icon}
+                icon=""
+                showIcon={false}
                 value={form[metric.key as keyof typeof form] as number}
                 onChange={(v) => updateSymptom(metric.key, v)}
-                color={metric.color}
-                lowLabel="None"
-                highLabel="Worst"
+                color="#64748b"
+                trackStyle="intensity"
                 baselineValue={baseline[metric.key]}
               />
             </div>
@@ -266,22 +265,35 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
       {/* Step 2: Sleep */}
       {step === 2 && (
         <div className="space-y-4">
-          <MiniSlider
-            label="Hours Slept"
-            icon="🛏️"
-            value={form.sleepHours}
-            onChange={(v) => setForm((prev) => ({ ...prev, sleepHours: v }))}
-            color="#6366f1"
-            min={3}
-            max={12}
-            lowLabel="3 hours"
-            highLabel="12 hours"
-            baselineValue={baseline.sleepHours}
-          />
+          <div className="bg-white rounded-xl border border-border p-4">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-text text-sm">Hours Slept</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={24}
+                  value={form.sleepHours || ''}
+                  onChange={(e) => setForm((prev) => ({ ...prev, sleepHours: Math.max(0, Math.min(24, Number(e.target.value))) }))}
+                  placeholder="7"
+                  className="w-24 px-3 py-2 rounded-lg border border-border bg-surface text-text text-center font-bold text-base focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                />
+                <span className="text-sm text-text-muted">hours</span>
+              </div>
+            </div>
+            {baseline.sleepHours !== undefined && (
+              <div className="flex items-center gap-1.5 mt-2 text-[10px] text-text-muted">
+                <span className="w-2 h-2 rounded-full bg-surface-dark inline-block" />
+                Baseline: {baseline.sleepHours} hours
+              </div>
+            )}
+          </div>
           <LikertScale
             value={form.sleepQuality}
             onChange={(v) => setForm((prev) => ({ ...prev, sleepQuality: v }))}
             baselineValue={baseline.sleepQuality}
+            showIcon={false}
+            variant="neutral"
           />
           <TimeInput
             label="Bedtime"
@@ -289,6 +301,8 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
             value={form.bedtime}
             onChange={(v) => setForm((prev) => ({ ...prev, bedtime: v }))}
             baselineValue={baseline.usualBedtime}
+            showIcon={false}
+            showDropdownArrow
           />
           <TimeInput
             label="Wake Time"
@@ -296,6 +310,8 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
             value={form.wakeTime}
             onChange={(v) => setForm((prev) => ({ ...prev, wakeTime: v }))}
             baselineValue={baseline.usualWakeTime}
+            showIcon={false}
+            showDropdownArrow
           />
         </div>
       )}
@@ -315,11 +331,11 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
               <div>
                 <p className="text-xs text-text-muted mb-1">Flare Risk Assessment</p>
                 <p className="text-xl font-bold" style={{ color: FLARE_RISK_CONFIG[liveFlareRisk].color }}>
-                  {FLARE_RISK_CONFIG[liveFlareRisk].icon} {FLARE_RISK_CONFIG[liveFlareRisk].label}
+                  {FLARE_RISK_CONFIG[liveFlareRisk].label}
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-text-muted">Total Deviation</p>
+                <p className="text-xs text-text-muted">Change from Baseline</p>
                 <p className="text-3xl font-bold text-text">{liveTotal}</p>
               </div>
             </div>
@@ -335,12 +351,11 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
               return (
                 <div key={metric.key} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
                   <div className="flex items-center gap-2">
-                    <span>{metric.icon}</span>
                     <span className="text-sm text-text">{metric.label}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-[10px] text-text-muted">Base: {base}</span>
-                    <span className="text-sm font-bold" style={{ color: metric.color }}>{val}</span>
+                    <span className="text-sm font-bold text-slate-600">{val}</span>
                     {diff !== 0 && (
                       <span
                         className="text-xs font-bold px-1.5 py-0.5 rounded"
@@ -393,18 +408,6 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
             />
             <p className="text-right text-[10px] text-text-muted mt-1">{form.notes.length}/150</p>
           </div>
-
-          {/* JSON */}
-          <details className="bg-white rounded-2xl border border-border overflow-hidden">
-            <summary className="px-5 py-3 cursor-pointer hover:bg-surface transition-colors text-xs font-semibold text-text-muted">
-              📋 View Raw Data (JSON)
-            </summary>
-            <div className="px-5 pb-4">
-              <pre className="bg-slate-900 text-emerald-400 rounded-xl p-3 text-[10px] overflow-x-auto font-mono leading-relaxed max-h-48 overflow-y-auto">
-                {JSON.stringify({ ...form, date: selectedDate, deviationScore: liveTotal, flareRiskLevel: liveFlareRisk }, null, 2)}
-              </pre>
-            </div>
-          </details>
         </div>
       )}
 

@@ -15,7 +15,6 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
   const { baseline } = useBaseline()
   const { logs } = useLogs()
   const [expandedDate, setExpandedDate] = useState<string | null>(null)
-  const [showJson, setShowJson] = useState<string | null>(null)
 
   if (!baseline) return null
 
@@ -23,7 +22,6 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
 
   const toggleExpand = (date: string) => {
     setExpandedDate((prev) => (prev === date ? null : date))
-    setShowJson(null)
   }
 
   const renderLogDetail = (log: DailyLog) => {
@@ -31,79 +29,68 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
     const hasRedFlags = log.redFlags ? Object.values(log.redFlags).some(Boolean) : false
 
     return (
-      <div className="px-5 pb-5 space-y-4">
-        {/* Core symptom grid */}
-        <div className="grid grid-cols-5 gap-2">
-          {SYMPTOM_METRICS.map((metric) => {
-            const base = baseline[metric.key]
-            const today = log[metric.key]
-            const diff = today - base
-            return (
-              <div key={metric.key} className="text-center p-2 rounded-lg bg-surface">
-                <span className="text-lg block">{metric.icon}</span>
-                <span className="text-lg font-bold block" style={{ color: metric.color }}>{today}</span>
-                {diff !== 0 && (
-                  <span className="text-[10px] font-bold" style={{ color: diff > 0 ? '#ef4444' : '#10b981' }}>
-                    {diff > 0 ? '+' : ''}{diff}
-                  </span>
-                )}
-                {diff === 0 && <span className="text-[10px] text-text-muted">→</span>}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Summary row */}
-        <div className="grid grid-cols-3 gap-3 text-sm">
-          <div className="bg-surface rounded-lg p-3">
-            <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Sleep</p>
-            <p className="font-bold text-text">{log.sleepHours}h</p>
-            <p className="text-[10px] text-text-muted">{SLEEP_QUALITY_LABELS[log.sleepQuality]}</p>
-          </div>
-          <div className="bg-surface rounded-lg p-3">
-            <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Bed / Wake</p>
-            <p className="font-bold text-text font-mono text-xs">{log.bedtime} – {log.wakeTime}</p>
-          </div>
-          <div className="bg-surface rounded-lg p-3">
-            <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Flare Risk</p>
-            <p className="font-bold text-xs" style={{ color: riskConfig.color }}>{riskConfig.icon} {riskConfig.label}</p>
-          </div>
-        </div>
-
-        {/* Red flags */}
-        {hasRedFlags && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <p className="text-xs text-red-700 font-semibold mb-1.5">Red Flags</p>
-            <div className="space-y-1">
-              {RED_FLAGS.filter((f) => log.redFlags?.[f.key]).map((flag) => (
-                <p key={flag.key} className="text-xs text-red-600 flex items-center gap-1.5">
-                  {flag.icon} {flag.label}
-                </p>
-              ))}
+      <tr>
+        <td colSpan={8} className="px-4 py-4 bg-surface/50">
+          <div className="space-y-4">
+            {/* Symptom detail grid */}
+            <div className="grid grid-cols-4 gap-2">
+              {SYMPTOM_METRICS.map((metric) => {
+                const base = baseline[metric.key]
+                const today = log[metric.key]
+                const diff = today - base
+                return (
+                  <div key={metric.key} className="text-center p-2 rounded-lg bg-white border border-border">
+                    <span className="text-[10px] text-text-muted block">{metric.label}</span>
+                    <span className="text-base font-bold block text-slate-600">{today}</span>
+                    {diff !== 0 && (
+                      <span className="text-[10px] font-bold" style={{ color: diff > 0 ? '#ef4444' : '#10b981' }}>
+                        {diff > 0 ? '+' : ''}{diff} vs base
+                      </span>
+                    )}
+                    {diff === 0 && <span className="text-[10px] text-text-muted">no change</span>}
+                  </div>
+                )
+              })}
             </div>
-          </div>
-        )}
 
-        {/* Notes */}
-        {log.notes && (
-          <div className="bg-surface rounded-lg p-3">
-            <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Notes</p>
-            <p className="text-xs text-text">{log.notes}</p>
-          </div>
-        )}
+            {/* Summary row */}
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div className="bg-white rounded-lg border border-border p-3">
+                <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Sleep</p>
+                <p className="font-bold text-text">{log.sleepHours}h &middot; {SLEEP_QUALITY_LABELS[log.sleepQuality]}</p>
+              </div>
+              <div className="bg-white rounded-lg border border-border p-3">
+                <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Bed / Wake</p>
+                <p className="font-bold text-text font-mono text-xs">{log.bedtime} – {log.wakeTime}</p>
+              </div>
+              <div className="bg-white rounded-lg border border-border p-3">
+                <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Flare Risk</p>
+                <p className="font-bold text-xs" style={{ color: riskConfig.color }}>{riskConfig.label}</p>
+              </div>
+            </div>
 
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowJson((prev) => prev === log.date ? null : log.date) }}
-          className="text-[10px] text-primary font-medium hover:underline"
-        >
-          {showJson === log.date ? 'Hide JSON' : 'View JSON'}
-        </button>
-        {showJson === log.date && (
-          <pre className="bg-slate-900 text-emerald-400 rounded-xl p-3 text-[10px] overflow-x-auto font-mono leading-relaxed max-h-48 overflow-y-auto">
-            {JSON.stringify(log, null, 2)}
-          </pre>
-        )}
-      </div>
+            {/* Red flags */}
+            {hasRedFlags && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-xs text-red-700 font-semibold mb-1.5">Red Flags</p>
+                <div className="space-y-1">
+                  {RED_FLAGS.filter((f) => log.redFlags?.[f.key]).map((flag) => (
+                    <p key={flag.key} className="text-xs text-red-600">{flag.label}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
+            {log.notes && (
+              <div className="bg-white rounded-lg border border-border p-3">
+                <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Notes</p>
+                <p className="text-xs text-text">{log.notes}</p>
+              </div>
+            )}
+          </div>
+        </td>
+      </tr>
     )
   }
 
@@ -113,7 +100,7 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
       {logs.length > 0 && (
         <div className="bg-white rounded-2xl border border-border p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-text">Deviation Score Trend</h3>
+            <h3 className="text-sm font-semibold text-text">Symptom Trend</h3>
             <div className="flex items-center gap-3 text-[10px] text-text-muted">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Low</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Medium</span>
@@ -124,10 +111,9 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
         </div>
       )}
 
-      {/* Log list */}
+      {/* Log table */}
       {sorted.length === 0 ? (
         <div className="bg-white rounded-2xl border border-border p-12 text-center">
-          <p className="text-4xl mb-3">📝</p>
           <p className="text-text font-semibold mb-1">No logs yet</p>
           <p className="text-text-muted text-sm mb-4">Start tracking your daily condition</p>
           <button
@@ -138,64 +124,83 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-border overflow-hidden">
-          {sorted.map((log, i) => {
-            const riskConfig = FLARE_RISK_CONFIG[log.flareRiskLevel]
-            const logRedFlags = log.redFlags ? Object.values(log.redFlags).filter(Boolean).length : 0
-            const dateStr = new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })
-            const isExpanded = expandedDate === log.date
-            return (
-              <div key={log.date} className={i < sorted.length - 1 ? 'border-b border-border/50' : ''}>
-                <button
-                  onClick={() => toggleExpand(log.date)}
-                  className="w-full flex items-center justify-between px-5 py-4 hover:bg-surface transition-colors text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">{riskConfig.icon}</span>
-                    <div>
-                      <p className="text-sm font-medium text-text">{dateStr}</p>
-                      <p className="text-[10px] text-text-muted">
-                        Dev score: {log.deviationScore}
-                        {logRedFlags > 0 && <span className="text-red-500 ml-2">🚨 {logRedFlags} red flag{logRedFlags > 1 ? 's' : ''}</span>}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="text-xs font-bold px-2.5 py-1 rounded-full"
-                      style={{ color: riskConfig.color, backgroundColor: riskConfig.color + '15' }}
-                    >
-                      {riskConfig.label}
-                    </span>
-                    <span className={`text-text-muted text-sm transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
-                      ▼
-                    </span>
-                  </div>
-                </button>
-                {isExpanded && renderLogDetail(log)}
-              </div>
-            )
-          })}
-        </div>
-      )}
+        <div className="bg-white rounded-2xl border border-border overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface/50">
+                <th className="text-left px-4 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">Date</th>
+                {SYMPTOM_METRICS.map((m) => (
+                  <th key={m.key} className="text-center px-2 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">{m.label}</th>
+                ))}
+                <th className="text-center px-2 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">Sleep</th>
+                <th className="text-center px-2 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">Flags</th>
+                <th className="text-center px-4 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">Risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((log) => {
+                const riskConfig = FLARE_RISK_CONFIG[log.flareRiskLevel]
+                const logRedFlags = log.redFlags ? Object.values(log.redFlags).filter(Boolean).length : 0
+                const isExpanded = expandedDate === log.date
+                const dateStr = new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                })
+                const weekday = new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', {
+                  weekday: 'short',
+                })
 
-      {/* Full export */}
-      {logs.length > 0 && (
-        <details className="bg-white rounded-2xl border border-border overflow-hidden">
-          <summary className="px-5 py-4 cursor-pointer hover:bg-surface transition-colors text-sm font-semibold text-text flex items-center gap-2">
-            <span>📊</span> Export All Data (JSON)
-          </summary>
-          <div className="px-5 pb-5">
-            <pre className="bg-slate-900 text-emerald-400 rounded-xl p-4 text-[10px] overflow-x-auto font-mono leading-relaxed max-h-64 overflow-y-auto">
-              {JSON.stringify({ baseline, logs: sorted }, null, 2)}
-            </pre>
-          </div>
-        </details>
+                return (
+                  <>
+                    <tr
+                      key={log.date}
+                      onClick={() => toggleExpand(log.date)}
+                      className={`border-b border-border/50 hover:bg-surface/50 cursor-pointer transition-colors ${isExpanded ? 'bg-surface/30' : ''}`}
+                    >
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-medium text-text">{dateStr}</p>
+                        <p className="text-[10px] text-text-muted">{weekday}</p>
+                      </td>
+                      {SYMPTOM_METRICS.map((metric) => {
+                        const val = log[metric.key]
+                        const diff = val - baseline[metric.key]
+                        return (
+                          <td key={metric.key} className="text-center px-2 py-3">
+                            <span className="text-sm font-bold text-slate-600">{val}</span>
+                            {diff !== 0 && (
+                              <span className="text-[9px] font-bold ml-0.5" style={{ color: diff > 0 ? '#ef4444' : '#10b981' }}>
+                                {diff > 0 ? '+' : ''}{diff}
+                              </span>
+                            )}
+                          </td>
+                        )
+                      })}
+                      <td className="text-center px-2 py-3">
+                        <span className="text-sm text-text">{log.sleepHours}h</span>
+                      </td>
+                      <td className="text-center px-2 py-3">
+                        {logRedFlags > 0 ? (
+                          <span className="text-xs text-red-500 font-medium">{logRedFlags}</span>
+                        ) : (
+                          <span className="text-xs text-text-muted">—</span>
+                        )}
+                      </td>
+                      <td className="text-center px-4 py-3">
+                        <span
+                          className="text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap"
+                          style={{ color: riskConfig.color, backgroundColor: riskConfig.color + '15' }}
+                        >
+                          {riskConfig.label}
+                        </span>
+                      </td>
+                    </tr>
+                    {isExpanded && renderLogDetail(log)}
+                  </>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
