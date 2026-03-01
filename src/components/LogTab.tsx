@@ -19,6 +19,8 @@ import {
   type FormPage,
 } from '../constants/logFormSchema'
 import QuestionRenderer from './log/QuestionRenderer'
+import { useAuth } from '../hooks/useAuth'
+import { downloadLogFormPdf } from '../lib/generateLogFormPdf'
 
 /** Read a value from baseline, checking responses map first then legacy top-level field */
 function readBaselineVal(baseline: FormValues, key: string): unknown {
@@ -45,6 +47,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   const { baseline } = useBaseline()
   const { addLog, getLogByDate } = useLogs()
   const { schema, loading: schemaLoading } = useSchema()
+  const { currentUser } = useAuth()
 
   const today = getTodayDateString()
   const [selectedDate, setSelectedDate] = useState(today)
@@ -136,6 +139,85 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
     }
   }
 
+  const handleDownloadForm = () => {
+    if (!baseline || !schema) return
+    downloadLogFormPdf(schema, baseline, {
+      name: currentUser?.username ?? '',
+      email: currentUser?.email,
+      age: currentUser?.profile?.age,
+      bloodGroup: currentUser?.profile?.bloodGroup,
+      allergies: currentUser?.profile?.allergies,
+      currentMedications: currentUser?.profile?.currentMedications,
+    })
+  }
+
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState('')
+
+  const handleUploadForm = async (file: File) => {
+    setScanError('')
+    setScanning(true)
+    try {
+      const formData = new FormData()
+      formData.append('formImage', file)
+
+      const res = await fetch('/api/ai/scan-form', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Upload failed' }))
+        setScanError(err.error || 'Failed to process form')
+        return
+      }
+
+      const result = await res.json()
+      if (result.skipped) {
+        setScanError(result.reason || 'Form appears empty or unreadable. Please fill it in and try again.')
+        return
+      }
+
+      const data = result.data
+      if (!data) {
+        setScanError('Could not extract any data from the form.')
+        return
+      }
+
+      // Pre-fill the form with extracted values
+      const newForm = createFormDefaults(schema, baseline)
+
+      // Apply extracted responses
+      if (data.responses && typeof data.responses === 'object') {
+        for (const [key, val] of Object.entries(data.responses)) {
+          newForm[key] = val
+        }
+      }
+
+      // Apply standard fields
+      if (data.sleepHours !== undefined) newForm.sleepHours = data.sleepHours
+      if (data.sleepQuality !== undefined) newForm.sleepQuality = data.sleepQuality
+      if (data.bedtime) newForm.bedtime = data.bedtime
+      if (data.wakeTime) newForm.wakeTime = data.wakeTime
+      if (data.notes) newForm.notes = data.notes
+      if (data.redFlags && typeof data.redFlags === 'object') {
+        newForm.redFlags = {
+          ...((newForm.redFlags as Record<string, boolean>) ?? {}),
+          ...data.redFlags,
+        }
+      }
+
+      setForm(newForm)
+      setStep(schema.pages.length) // Jump to review step
+      setEditing(true)
+    } catch {
+      setScanError('Something went wrong. Please try again.')
+    } finally {
+      setScanning(false)
+    }
+  }
+
   const startEditing = () => {
     if (existingLog) {
       setForm(loadFormFromLog(existingLog, schema))
@@ -217,6 +299,59 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
             >
               Edit Today's Log
             </button>
+            <div className="flex items-center justify-center gap-4 mt-3">
+              <button
+                onClick={handleDownloadForm}
+                className="px-4 py-2 text-xs font-medium text-text-muted hover:text-primary transition-colors flex items-center gap-1.5"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Download form (PDF)
+              </button>
+
+              <span className="text-text-muted/30 text-xs">|</span>
+
+              <label className={`px-4 py-2 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
+                scanning ? 'text-amber-600' : 'text-text-muted hover:text-primary'
+              }`}>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="hidden"
+                  disabled={scanning}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleUploadForm(file)
+                    e.target.value = ''
+                  }}
+                />
+                {scanning ? (
+                  <>
+                    <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" className="opacity-25" />
+                      <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" fill="currentColor" />
+                    </svg>
+                    Scanning form...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    Upload filled form
+                  </>
+                )}
+              </label>
+            </div>
+
+            {scanError && (
+              <p className="mt-3 text-xs text-red-500 text-center">{scanError}</p>
+            )}
           </div>
         </div>
       )
@@ -231,7 +366,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
           </div>
           <h2 className="text-lg font-semibold text-text mb-2">You haven't logged for today</h2>
           <p className="text-sm text-text-muted mb-6 max-w-sm mx-auto">
-            Take a minute to record how you're feeling. Make sure to do it before going to bed.
+            Log online, or download the printable form, fill it by hand, and snap a photo to upload.
           </p>
           <button
             onClick={startEditing}
@@ -239,6 +374,60 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
           >
             Start Logging
           </button>
+
+          <div className="flex items-center justify-center gap-4 mt-4">
+            <button
+              onClick={handleDownloadForm}
+              className="px-4 py-2 text-xs font-medium text-text-muted hover:text-primary transition-colors flex items-center gap-1.5"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download form (PDF)
+            </button>
+
+            <span className="text-text-muted/30 text-xs">|</span>
+
+            <label className={`px-4 py-2 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
+              scanning ? 'text-amber-600' : 'text-text-muted hover:text-primary'
+            }`}>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                className="hidden"
+                disabled={scanning}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) handleUploadForm(file)
+                  e.target.value = ''
+                }}
+              />
+              {scanning ? (
+                <>
+                  <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" className="opacity-25" />
+                    <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" fill="currentColor" />
+                  </svg>
+                  Scanning form...
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Upload filled form
+                </>
+              )}
+            </label>
+          </div>
+
+          {scanError && (
+            <p className="mt-3 text-xs text-red-500 max-w-sm mx-auto">{scanError}</p>
+          )}
         </div>
       </div>
     )
