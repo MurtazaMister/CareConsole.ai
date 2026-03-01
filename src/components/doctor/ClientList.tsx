@@ -6,6 +6,11 @@ interface ClientListProps {
   onSelectPatient: (patientId: string) => void
 }
 
+function daysSince(dateStr: string | null): number | null {
+  if (!dateStr) return null
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000)
+}
+
 export default function ClientList({ onSelectPatient }: ClientListProps) {
   const { clients, clientsLoading, addClient, removeClient } = useDoctor()
   const [search, setSearch] = useState('')
@@ -38,6 +43,19 @@ export default function ClientList({ onSelectPatient }: ClientListProps) {
     return 'bg-gray-100 text-gray-500 border-gray-200'
   }
 
+  const trendIcon = (trend: ClientSummary['recentTrend']) => {
+    if (trend === 'improving') return { arrow: '\u2193', color: 'text-emerald-600', label: 'Improving' }
+    if (trend === 'worsening') return { arrow: '\u2191', color: 'text-red-600', label: 'Worsening' }
+    return { arrow: '\u2192', color: 'text-gray-400', label: 'Stable' }
+  }
+
+  const lastLogColor = (days: number | null) => {
+    if (days === null) return 'text-gray-400'
+    if (days >= 7) return 'text-red-600'
+    if (days >= 3) return 'text-amber-600'
+    return 'text-emerald-600'
+  }
+
   if (clientsLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -45,6 +63,13 @@ export default function ClientList({ onSelectPatient }: ClientListProps) {
       </div>
     )
   }
+
+  // Computed stats
+  const inFlareCount = clients.filter((c) => c.lastFlareRisk === 'high' || c.lastFlareRisk === 'moderate').length
+  const clientsWithScores = clients.filter((c) => c.lastDeviationScore !== null)
+  const avgDeviation = clientsWithScores.length > 0
+    ? Math.round(clientsWithScores.reduce((s, c) => s + (c.lastDeviationScore ?? 0), 0) / clientsWithScores.length)
+    : 0
 
   return (
     <div className="space-y-6">
@@ -77,6 +102,26 @@ export default function ClientList({ onSelectPatient }: ClientListProps) {
         )}
       </div>
 
+      {/* Summary stats bar */}
+      {clients.length > 0 && (
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-white rounded-2xl border border-border p-4 text-center shadow-sm">
+            <p className="text-2xl font-bold text-text">{clients.length}</p>
+            <p className="text-xs text-text-muted">Total Clients</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-border p-4 text-center shadow-sm">
+            <p className={`text-2xl font-bold ${inFlareCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+              {inFlareCount}
+            </p>
+            <p className="text-xs text-text-muted">In Flare</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-border p-4 text-center shadow-sm">
+            <p className="text-2xl font-bold text-text">{avgDeviation}%</p>
+            <p className="text-xs text-text-muted">Avg Deviation</p>
+          </div>
+        </div>
+      )}
+
       {/* Client list */}
       {clients.length === 0 ? (
         <div className="text-center py-16">
@@ -86,93 +131,105 @@ export default function ClientList({ onSelectPatient }: ClientListProps) {
         </div>
       ) : (
         <div className="space-y-3">
-          {clients.map((client: ClientSummary) => (
-            <div
-              key={client.id}
-              className="bg-white rounded-2xl border border-border p-5 shadow-sm hover:shadow-md hover:border-primary/20 transition-all cursor-pointer group"
-              onClick={() => onSelectPatient(client.id)}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4 flex-1 min-w-0">
-                  {/* Avatar */}
-                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary/80 to-accent/80 text-white font-bold text-sm flex items-center justify-center flex-shrink-0">
-                    {client.username.charAt(0).toUpperCase()}
-                  </div>
+          {clients.map((client: ClientSummary) => {
+            const days = daysSince(client.lastLogDate)
+            const trend = trendIcon(client.recentTrend)
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-semibold text-text">{client.username}</h4>
-                      {client.lastFlareRisk && (
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${riskColor(client.lastFlareRisk)}`}>
-                          {client.lastFlareRisk.toUpperCase()}
-                        </span>
-                      )}
+            return (
+              <div
+                key={client.id}
+                className="bg-white rounded-2xl border border-border p-5 shadow-sm hover:shadow-md hover:border-primary/20 transition-all cursor-pointer group"
+                onClick={() => onSelectPatient(client.id)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    {/* Avatar */}
+                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary/80 to-accent/80 text-white font-bold text-sm flex items-center justify-center flex-shrink-0">
+                      {client.username.charAt(0).toUpperCase()}
                     </div>
-                    <p className="text-xs text-text-muted truncate">
-                      {client.condition ?? 'No condition set'}
-                      {client.conditionDurationMonths ? ` · ${Math.floor(client.conditionDurationMonths / 12)}y ${client.conditionDurationMonths % 12}m` : ''}
-                    </p>
-                  </div>
 
-                  {/* Stats */}
-                  <div className="hidden sm:flex items-center gap-6 text-xs text-text-muted">
-                    <div className="text-center">
-                      <p className="font-medium text-text">
-                        {client.lastDeviationScore !== null ? `${Math.round(client.lastDeviationScore)}%` : '--'}
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-semibold text-text">{client.username}</h4>
+                        {client.lastFlareRisk && (
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${riskColor(client.lastFlareRisk)}`}>
+                            {client.lastFlareRisk.toUpperCase()}
+                          </span>
+                        )}
+                        {client.totalLogs > 0 && (
+                          <span className={`text-sm font-bold ${trend.color}`} title={trend.label}>
+                            {trend.arrow}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-text-muted truncate">
+                        {client.condition ?? 'No condition set'}
+                        {client.conditionDurationMonths ? ` \u00b7 ${Math.floor(client.conditionDurationMonths / 12)}y ${client.conditionDurationMonths % 12}m` : ''}
                       </p>
-                      <p>Deviation</p>
                     </div>
-                    <div className="text-center">
-                      <p className="font-medium text-text">
-                        {client.lastLogDate
-                          ? new Date(client.lastLogDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                          : '--'}
-                      </p>
-                      <p>Last Log</p>
+
+                    {/* Stats */}
+                    <div className="hidden sm:flex items-center gap-6 text-xs text-text-muted">
+                      <div className="text-center">
+                        <p className="font-medium text-text">
+                          {client.lastDeviationScore !== null ? `${Math.round(client.lastDeviationScore)}%` : '--'}
+                        </p>
+                        <p>Deviation</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="font-medium text-text">{client.totalLogs}</p>
+                        <p>Logs</p>
+                      </div>
+                      <div className="text-center">
+                        <p className={`font-medium ${lastLogColor(days)}`}>
+                          {days !== null ? `${days}d ago` : '--'}
+                        </p>
+                        <p>Last Log</p>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-2 ml-3">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setConfirmRemove(client.id) }}
-                    className="p-2 rounded-lg text-text-muted hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                    title="Remove client"
-                  >
-                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 ml-3">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmRemove(client.id) }}
+                      className="p-2 rounded-lg text-text-muted hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Remove client"
+                    >
+                      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-text-muted group-hover:text-primary transition-colors">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                     </svg>
-                  </button>
-                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-text-muted group-hover:text-primary transition-colors">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-
-              {/* Remove confirmation */}
-              {confirmRemove === client.id && (
-                <div className="mt-3 pt-3 border-t border-border flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
-                  <p className="text-xs text-text-muted">Remove {client.username} from your clients?</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setConfirmRemove(null)}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-surface transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => handleRemove(client.id)}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-                    >
-                      Remove
-                    </button>
                   </div>
                 </div>
-              )}
-            </div>
-          ))}
+
+                {/* Remove confirmation */}
+                {confirmRemove === client.id && (
+                  <div className="mt-3 pt-3 border-t border-border flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
+                    <p className="text-xs text-text-muted">Remove {client.username} from your clients?</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setConfirmRemove(null)}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-surface transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => handleRemove(client.id)}
+                        className="px-3 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

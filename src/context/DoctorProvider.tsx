@@ -11,6 +11,8 @@ export interface ClientSummary {
   lastLogDate: string | null
   lastDeviationScore: number | null
   lastFlareRisk: string | null
+  totalLogs: number
+  recentTrend: 'improving' | 'stable' | 'worsening'
   addedAt: string
 }
 

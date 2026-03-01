@@ -7,13 +7,15 @@ import { useSchema } from '../hooks/useSchema'
 import OverviewTab from '../components/OverviewTab'
 import LogTab from '../components/LogTab'
 import HistoryTab from '../components/HistoryTab'
+import ReportsTab from '../components/ReportsTab'
 
-type PatientTab = 'log' | 'overview' | 'history'
+type PatientTab = 'log' | 'overview' | 'history' | 'reports'
 
 const TABS: { key: PatientTab; label: string; icon: string }[] = [
   { key: 'log', label: 'Daily Log', icon: '📝' },
   { key: 'overview', label: 'Overview', icon: '📊' },
   { key: 'history', label: 'History', icon: '📅' },
+  { key: 'reports', label: 'Reports', icon: '📄' },
 ]
 
 export default function PatientDashboard() {
@@ -81,7 +83,7 @@ export default function PatientDashboard() {
 
   // Adapter: OverviewTab and LogTab expect Tab type from TabBar, map PatientTab → Tab
   const handleSwitchTab = (tab: string) => {
-    if (tab === 'log' || tab === 'overview' || tab === 'history') {
+    if (tab === 'log' || tab === 'overview' || tab === 'history' || tab === 'reports') {
       setActiveTab(tab as PatientTab)
     }
   }
@@ -167,6 +169,7 @@ export default function PatientDashboard() {
         {activeTab === 'log' && <LogTab onSwitchTab={handleSwitchTab} />}
         {activeTab === 'overview' && <OverviewTab onSwitchTab={handleSwitchTab} />}
         {activeTab === 'history' && <HistoryTab onSwitchTab={handleSwitchTab} />}
+        {activeTab === 'reports' && <ReportsTab onSwitchTab={handleSwitchTab} />}
       </div>
     </div>
   )

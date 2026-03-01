@@ -5,6 +5,26 @@ import Baseline from '../models/Baseline'
 import DailyLog from '../models/DailyLog'
 import UserSchema from '../models/UserSchema'
 
+// ── Helpers ──────────────────────────────────────────────
+
+function computeRecentTrend(deviations: number[]): 'improving' | 'stable' | 'worsening' {
+  // deviations are in descending date order (most recent first)
+  if (deviations.length < 4) return 'stable'
+
+  const recent7 = deviations.slice(0, Math.min(7, deviations.length))
+  const prior7 = deviations.slice(Math.min(7, deviations.length), Math.min(14, deviations.length))
+
+  if (prior7.length === 0) return 'stable'
+
+  const recentAvg = recent7.reduce((s, v) => s + v, 0) / recent7.length
+  const priorAvg = prior7.reduce((s, v) => s + v, 0) / prior7.length
+  const diff = recentAvg - priorAvg
+
+  if (diff < -5) return 'improving'
+  if (diff > 5) return 'worsening'
+  return 'stable'
+}
+
 // ── List doctor's clients ────────────────────────────────
 
 export async function getClients(req: Request, res: Response) {
@@ -16,23 +36,39 @@ export async function getClients(req: Request, res: Response) {
 
   const patientIds = links.map((l) => l.patientId)
 
-  // Fetch patients, baselines, and latest logs in parallel
-  const [patients, baselines, latestLogs] = await Promise.all([
+  // Fetch patients, baselines, and log stats in parallel
+  const [patients, baselines, logStats] = await Promise.all([
     User.find({ _id: { $in: patientIds } }).select('-password').lean(),
     Baseline.find({ userId: { $in: patientIds } }).lean(),
     DailyLog.aggregate([
       { $match: { userId: { $in: patientIds } } },
       { $sort: { date: -1 } },
-      { $group: { _id: '$userId', lastLog: { $first: '$$ROOT' } } },
+      {
+        $group: {
+          _id: '$userId',
+          lastLog: { $first: '$$ROOT' },
+          totalLogs: { $sum: 1 },
+          recentDeviations: { $push: '$deviationScore' },
+        },
+      },
     ]),
   ])
 
   const baselineMap = new Map(baselines.map((b) => [String(b.userId), b]))
-  const logMap = new Map(latestLogs.map((l) => [String(l._id), l.lastLog]))
+  const logMap = new Map(
+    logStats.map((l) => [
+      String(l._id),
+      {
+        lastLog: l.lastLog,
+        totalLogs: l.totalLogs as number,
+        recentTrend: computeRecentTrend(l.recentDeviations as number[]),
+      },
+    ]),
+  )
 
   const clients = patients.map((p) => {
     const baseline = baselineMap.get(String(p._id))
-    const lastLog = logMap.get(String(p._id))
+    const logData = logMap.get(String(p._id))
     return {
       id: p._id,
       username: p.username,
@@ -40,9 +76,11 @@ export async function getClients(req: Request, res: Response) {
       profile: p.profile,
       condition: baseline?.primaryCondition ?? null,
       conditionDurationMonths: baseline?.conditionDurationMonths ?? null,
-      lastLogDate: lastLog?.date ?? null,
-      lastDeviationScore: lastLog?.deviationScore ?? null,
-      lastFlareRisk: lastLog?.flareRiskLevel ?? null,
+      lastLogDate: logData?.lastLog?.date ?? null,
+      lastDeviationScore: logData?.lastLog?.deviationScore ?? null,
+      lastFlareRisk: logData?.lastLog?.flareRiskLevel ?? null,
+      totalLogs: logData?.totalLogs ?? 0,
+      recentTrend: logData?.recentTrend ?? ('stable' as const),
       addedAt: links.find((l) => String(l.patientId) === String(p._id))?.addedAt,
     }
   })
@@ -100,6 +138,8 @@ export async function addClient(req: Request, res: Response) {
       lastLogDate: null,
       lastDeviationScore: null,
       lastFlareRisk: null,
+      totalLogs: 0,
+      recentTrend: 'stable' as const,
       addedAt: new Date(),
     },
   })
