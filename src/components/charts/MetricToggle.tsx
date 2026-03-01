@@ -25,10 +25,10 @@ export default function MetricToggle({ active, onChange }: MetricToggleProps) {
           <button
             key={metric.key}
             onClick={() => toggle(metric.key)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border cursor-pointer select-none ${
               isActive
-                ? 'text-white shadow-sm'
-                : 'bg-white text-text-muted border-border hover:border-border'
+                ? 'text-white shadow-sm hover:opacity-80'
+                : 'bg-white text-text-muted border-border hover:border-gray-400 hover:text-text hover:shadow-sm'
             }`}
             style={
               isActive

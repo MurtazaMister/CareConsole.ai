@@ -25,11 +25,19 @@ export default function SymptomRadarChart({ baseline, todayLog }: SymptomRadarCh
 
   return (
     <div className="relative">
-      <ResponsiveContainer width="100%" height={250}>
-        <RadarChart data={data} cx="50%" cy="50%" outerRadius="75%">
-          <PolarGrid stroke="#e2e8f0" />
-          <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: '#64748b' }} />
-          <PolarRadiusAxis domain={[0, 10]} tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} />
+      <ResponsiveContainer width="100%" height={260}>
+        <RadarChart data={data} cx="50%" cy="48%" outerRadius="70%">
+          <PolarGrid stroke="#e2e8f0" gridType="polygon" />
+          <PolarAngleAxis
+            dataKey="metric"
+            tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }}
+          />
+          <PolarRadiusAxis
+            domain={[0, 10]}
+            tickCount={3}
+            tick={false}
+            axisLine={false}
+          />
           <Radar
             name="Baseline"
             dataKey="Baseline"
@@ -37,6 +45,9 @@ export default function SymptomRadarChart({ baseline, todayLog }: SymptomRadarCh
             fill="#94a3b8"
             fillOpacity={0.15}
             strokeWidth={2}
+            dot={{ r: 3, fill: '#94a3b8', strokeWidth: 0 }}
+            animationDuration={800}
+            animationEasing="ease-out"
           />
           {todayLog && (
             <Radar
@@ -46,6 +57,10 @@ export default function SymptomRadarChart({ baseline, todayLog }: SymptomRadarCh
               fill="#6366f1"
               fillOpacity={0.2}
               strokeWidth={2}
+              dot={{ r: 3, fill: '#6366f1', strokeWidth: 0 }}
+              animationDuration={1000}
+              animationBegin={300}
+              animationEasing="ease-out"
             />
           )}
           <Legend

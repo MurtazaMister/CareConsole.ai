@@ -1,7 +1,6 @@
 import { useBaseline } from '../hooks/useBaseline'
 import { useLogs } from '../hooks/useLogs'
 import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
-import { HEALTH_CHECKS } from '../types/dailyLog'
 import type { Tab } from './TabBar'
 import ChartsPanel from './charts/ChartsPanel'
 
@@ -138,56 +137,6 @@ export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
         </div>
       </div>
 
-      {/* Sleep & Health Check-in Quick View (only when log exists) */}
-      {todayLog && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white rounded-2xl border border-border p-5">
-            <h4 className="text-xs text-text-muted uppercase tracking-wide font-medium mb-3">Sleep Last Night</h4>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-2xl font-bold text-text">{todayLog.sleepHours}h</p>
-                <p className="text-[10px] text-text-muted">
-                  Base: {baseline.sleepHours}h
-                  {todayLog.sleepHours !== baseline.sleepHours && (
-                    <span style={{ color: todayLog.sleepHours < baseline.sleepHours ? '#ef4444' : '#10b981' }}>
-                      {' '}{todayLog.sleepHours > baseline.sleepHours ? '+' : ''}{todayLog.sleepHours - baseline.sleepHours}h
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm font-bold text-slate-600">{SLEEP_QUALITY_LABELS[todayLog.sleepQuality]}</p>
-                <p className="text-[10px] text-text-muted">Quality ({todayLog.sleepQuality}/5)</p>
-              </div>
-            </div>
-            <div className="flex gap-4 mt-3 text-xs text-text-muted font-mono">
-              <span>Bed: {todayLog.bedtime}</span>
-              <span>Wake: {todayLog.wakeTime}</span>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-border p-5">
-            <h4 className="text-xs text-text-muted uppercase tracking-wide font-medium mb-3">Health Check-in</h4>
-            {checkedItems > 0 ? (
-              <div className="space-y-2">
-                {HEALTH_CHECKS.filter((c) => todayLog.redFlags?.[c.key]).map((check) => (
-                  <p key={check.key} className="text-xs text-text">{check.label.replace('?', '')}</p>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-emerald-600 font-medium">All clear</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Notes */}
-      {todayLog?.notes && (
-        <div className="bg-white rounded-2xl border border-border p-5">
-          <h4 className="text-xs text-text-muted uppercase tracking-wide font-medium mb-2">Today's Note</h4>
-          <p className="text-sm text-text">{todayLog.notes}</p>
-        </div>
-      )}
     </div>
   )
 }
