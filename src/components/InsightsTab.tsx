@@ -119,7 +119,7 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
       />
 
       {/* Date Range Selector */}
-      <div className="sticky top-[140px] z-10 bg-white/90 backdrop-blur-sm border border-border shadow-sm -mx-1 px-4 py-2.5 rounded-xl flex items-center justify-between flex-wrap gap-3">
+      <div className="sticky top-[140px] z-10 bg-white border border-border shadow-sm -mx-1 px-4 py-2.5 rounded-xl flex items-center justify-between flex-wrap gap-3">
         <h3 className="text-lg font-semibold text-text">Analysis</h3>
         <DateRangeSelector value={range} onChange={setRange} />
       </div>

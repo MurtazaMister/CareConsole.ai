@@ -220,7 +220,7 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-cyan-50">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-border sticky top-0 z-10">
+      <div className="bg-white border-b border-border sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-lg font-semibold text-text">

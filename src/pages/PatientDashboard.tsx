@@ -91,7 +91,7 @@ export default function PatientDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-cyan-50">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-border sticky top-0 z-20">
+      <div className="bg-white border-b border-border sticky top-0 z-20">
         <div className="max-w-4xl mx-auto px-6 pt-4 pb-3">
           <div className="flex items-center justify-between mb-4">
             <div>
