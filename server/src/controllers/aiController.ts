@@ -114,35 +114,43 @@ function buildUserMessage(
   return lines.join('\n')
 }
 
-const FLARE_EXPLAIN_PROMPT = `You are a compassionate health assistant explaining a detected flare to a patient with a chronic condition. Your goal is to help them understand what happened in their body during this period — not just list numbers.
+const FLARE_EXPLAIN_PROMPT = `You are a compassionate health assistant explaining a detected flare to a patient with a chronic condition. Your goal is to help them genuinely understand what might have triggered this flare — not just describe it.
 
 You will receive:
 - The patient's baseline (their "normal day" self-reported ratings, 0-10 scale)
-- Their actual daily self-reported symptom ratings during the flare (0-10 scale)
-- Statistical signals from our flare detection engine (explained below)
+- PRE-FLARE days (the days just before the flare started — look for early warning signs here)
+- DURING-FLARE days (self-reported ratings + statistical signals showing which symptoms drove the flare)
+- Patient notes from the period (these often contain clues: stress, missed meds, poor sleep, weather, activity changes)
 
-KEY CONCEPTS (do NOT use these terms in your response — translate them into plain language):
-- "Z-Score": how many standard deviations a symptom is above the patient's personal normal. A z-score of 2 means "roughly double their usual variability."
-- "EWMA": a smoothed trend line. Unlike a single day's rating, EWMA builds up over consecutive bad days. A high EWMA means the symptom has been consistently elevated, not just a one-day spike.
-- "Composite Score": a weighted combination of all 4 symptoms into one overall flare intensity number. Higher = worse overall.
-- "Contribution %": how much each symptom contributed to the overall flare score. This tells you which symptom was the primary driver.
+KEY CONCEPTS (for your understanding only — never use these terms in your output):
+- "Z-Score": how far above personal normal. z=2 means well outside their usual range.
+- "EWMA": smoothed trend. High EWMA = consistently elevated, not just a one-day spike.
+- "Contribution %": which symptom drove the overall flare score the most.
 
 YOUR TASK:
-Write 3-5 sentences explaining this flare. Be specific and insightful:
-- Compare their actual reported ratings to their baseline (e.g., "Your pain ran around 7/10 during this period, well above your usual 3/10")
-- Identify the primary driver and explain WHY it matters (e.g., "Fatigue was the biggest factor — it didn't just spike once, it stayed elevated across the entire window, which is what pushed this into a detected flare")
-- If symptoms moved together, note the pattern (e.g., "Pain and breathing difficulty rose in tandem")
-- If the flare escalated, explain what that means practically
-- If patient notes are present, connect them to the data when relevant
+Write a short, insightful explanation with two parts:
+
+1. WHAT HAPPENED (1-2 sentences): Briefly describe the flare — which symptoms were most affected and how they compared to the patient's normal. Use their actual /10 ratings.
+
+2. POSSIBLE TRIGGERS (2-3 sentences): This is the most important part. Look at the pre-flare days and notes to suggest 2-3 possible causes. Think like a detective:
+   - Did sleep quality or hours drop before the flare started?
+   - Did the patient mention stress, activity changes, weather, missed medication, or illness in their notes?
+   - Did one symptom start creeping up before others followed?
+   - Did a health check-in flag get raised (missed meds, fever, etc.)?
+   - Is there a pattern between symptoms (e.g., poor sleep → fatigue → pain cascade)?
+   Frame these as possibilities, not diagnoses. Use language like "This may have been connected to...", "One possible factor is...", "It's worth discussing with your doctor whether..."
 
 Respond with JSON: { "explanation": "your explanation here" }
 
 Rules:
-- Max 150 words
-- Use the patient's actual self-reported ratings (the /10 numbers), NOT statistical scores
-- Never say "EWMA", "Z-Score", "composite score", or "standard deviation" — use plain language like "consistently above your usual", "a sustained pattern", "trending worse over several days"
-- Never diagnose or prescribe
-- Tone: calm, clear, empowering — like a knowledgeable friend explaining a lab result`
+- Max 200 words
+- Use the patient's actual self-reported ratings (/10), not statistical scores
+- Never say "EWMA", "Z-Score", "composite score", or "standard deviation"
+- Never diagnose or prescribe — frame insights as patterns worth discussing with their doctor
+- If you spot a plausible trigger, say so clearly but gently
+- If the notes mention something specific (e.g., "bad week at work", "forgot meds"), connect it to the data
+- If there's not enough data to suggest causes, say so honestly rather than making things up
+- Tone: warm, insightful, genuinely helpful — like a thoughtful friend who also understands health data`
 
 export async function explainFlareWindow(req: Request, res: Response) {
   const { flareWindow, dailyAnalysis } = req.body
@@ -154,12 +162,17 @@ export async function explainFlareWindow(req: Request, res: Response) {
 
   const endDate = flareWindow.endDate || new Date().toISOString().slice(0, 10)
 
+  // Compute a date 5 days before the flare start for pre-flare context
+  const preFlareDate = new Date(flareWindow.startDate + 'T00:00:00')
+  preFlareDate.setDate(preFlareDate.getDate() - 5)
+  const preFlareStart = preFlareDate.toISOString().slice(0, 10)
+
   const [user, baseline, logs] = await Promise.all([
     User.findById(req.userId).select('-password'),
     Baseline.findOne({ userId: req.userId }),
     DailyLog.find({
       userId: req.userId,
-      date: { $gte: flareWindow.startDate, $lte: endDate },
+      date: { $gte: preFlareStart, $lte: endDate },
     }).sort({ date: 1 }),
   ])
 
@@ -205,8 +218,25 @@ export async function explainFlareWindow(req: Request, res: Response) {
     logByDate[log.date] = log
   }
 
-  lines.push('## Day-by-Day Detail')
-  lines.push('Each day shows: self-reported ratings (what the patient actually felt) + statistical signals (how unusual it was).')
+  // Separate pre-flare logs from during-flare logs
+  const preFlare = logs.filter(l => l.date < flareWindow.startDate)
+  if (preFlare.length > 0) {
+    lines.push('## Pre-Flare Days (look for early warning signs here)')
+    for (const log of preFlare) {
+      lines.push(`### ${log.date}`)
+      lines.push(`  Pain ${log.painLevel}/10, Fatigue ${log.fatigueLevel}/10, Breathing ${log.breathingDifficulty}/10, Task Limitation ${log.functionalLimitation}/10`)
+      lines.push(`  Sleep: ${log.sleepHours}h (quality ${log.sleepQuality}/5)`)
+      const flags: string[] = []
+      if (log.redFlags?.chestPainWeaknessConfusion) flags.push('Chest pain/weakness/confusion')
+      if (log.redFlags?.feverSweatsChills) flags.push('Fever/sweats/chills')
+      if (log.redFlags?.missedOrNewMedication) flags.push('Missed or new medication')
+      if (flags.length > 0) lines.push(`  Health check-in flags: ${flags.join(', ')}`)
+      if (log.notes) lines.push(`  Notes: "${log.notes}"`)
+      lines.push('')
+    }
+  }
+
+  lines.push('## During Flare — Day-by-Day')
   lines.push('')
   for (const day of dailyAnalysis) {
     const log = logByDate[day.date]
@@ -214,9 +244,14 @@ export async function explainFlareWindow(req: Request, res: Response) {
     if (log) {
       lines.push(`  Self-reported: Pain ${log.painLevel}/10, Fatigue ${log.fatigueLevel}/10, Breathing ${log.breathingDifficulty}/10, Task Limitation ${log.functionalLimitation}/10`)
       lines.push(`  Sleep: ${log.sleepHours}h (quality ${log.sleepQuality}/5)`)
+      const flags: string[] = []
+      if (log.redFlags?.chestPainWeaknessConfusion) flags.push('Chest pain/weakness/confusion')
+      if (log.redFlags?.feverSweatsChills) flags.push('Fever/sweats/chills')
+      if (log.redFlags?.missedOrNewMedication) flags.push('Missed or new medication')
+      if (flags.length > 0) lines.push(`  Health check-in flags: ${flags.join(', ')}`)
       if (log.notes) lines.push(`  Notes: "${log.notes}"`)
     }
-    // Statistical context: contribution breakdown
+    // Statistical context: which symptoms drove this day's flare signal
     const topSymptoms = day.contributingSymptoms.slice(0, 3)
     const totalContrib = day.contributingSymptoms.reduce((s: number, c: { contribution: number }) => s + c.contribution, 0)
     const contribSummary = topSymptoms
@@ -237,8 +272,8 @@ export async function explainFlareWindow(req: Request, res: Response) {
         { role: 'user', content: lines.join('\n') },
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.3,
-      max_tokens: 300,
+      temperature: 0.4,
+      max_tokens: 400,
     })
 
     const content = completion.choices[0]?.message?.content
