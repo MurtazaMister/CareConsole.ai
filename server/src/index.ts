@@ -11,6 +11,8 @@ import userRoutes from './routes/user'
 import baselineRoutes from './routes/baseline'
 import logRoutes from './routes/logs'
 import aiRoutes from './routes/ai'
+import schemaRoutes from './routes/schema'
+import diseaseRoutes from './routes/disease'
 
 const app = express()
 
@@ -28,6 +30,8 @@ app.use('/api/user', authMiddleware, userRoutes)
 app.use('/api/baseline', authMiddleware, baselineRoutes)
 app.use('/api/logs', authMiddleware, logRoutes)
 app.use('/api/ai', authMiddleware, aiRoutes)
+app.use('/api/schema', authMiddleware, schemaRoutes)
+app.use('/api/disease', authMiddleware, diseaseRoutes)
 
 // Error handler (must be last)
 app.use(errorHandler)

@@ -4,6 +4,7 @@ import { connectDB } from './config/db'
 import User from './models/User'
 import Baseline from './models/Baseline'
 import DailyLog from './models/DailyLog'
+import UserSchema from './models/UserSchema'
 import { calculateDeviation, calculateFlareRisk } from './utils/flareLogic'
 
 // ── Helpers ──────────────────────────────────────────────
@@ -18,7 +19,6 @@ function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.round(val)))
 }
 
-/** Add random jitter to a base value */
 function jitter(base: number, range: number, min = 0, max = 10): number {
   return clamp(base + (Math.random() * range * 2 - range), min, max)
 }
@@ -30,18 +30,24 @@ function pickBedtime(base: string, jitterMins: number): string {
   return `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`
 }
 
-function pickWakeTime(base: string, jitterMins: number): string {
-  return pickBedtime(base, jitterMins)
-}
+// ── Types ────────────────────────────────────────────────
 
 interface LogDay {
-  pain: number; fatigue: number; breath: number; func: number
-  sleep: number; quality: number; bed: string; wake: string
+  responses: Record<string, number>
+  sleep: number
+  quality: number
+  bed: string
+  wake: string
   flags: { chest?: boolean; fever?: boolean; meds?: boolean }
   notes: string
 }
 
-// ── User Definitions ─────────────────────────────────────
+interface MetricDef {
+  key: string
+  label: string
+  color: string
+  gradient: string
+}
 
 interface UserSeed {
   username: string
@@ -53,55 +59,127 @@ interface UserSeed {
     allergies: string; currentMedications: string
   }
   baseline: {
-    primaryCondition: string; conditionDurationMonths: number
-    painLevel: number; fatigueLevel: number
-    breathingDifficulty: number; functionalLimitation: number
+    primaryCondition: string
+    conditionDurationMonths: number
+    responses: Record<string, number>
     sleepHours: number; sleepQuality: number
     usualBedtime: string; usualWakeTime: string
   }
+  finalMetrics: MetricDef[]
+  transientMetric?: {
+    def: MetricDef
+    appearsAtDay: number // day index when transient starts showing in notes
+    promoteAtDay: number // day index when promoted (after 3 mentions)
+    baselineValue: number // baseline value for this metric
+  }
   totalDays: number
-  generateLogs: (baseline: UserSeed['baseline']) => LogDay[]
+  generateLogs: (b: UserSeed['baseline'], metrics: string[], transient?: UserSeed['transientMetric']) => LogDay[]
+}
+
+// ── Color palette ────────────────────────────────────────
+
+const COLORS = [
+  { color: '#ef4444', gradient: 'from-red-400 to-rose-500' },
+  { color: '#f59e0b', gradient: 'from-amber-400 to-orange-500' },
+  { color: '#06b6d4', gradient: 'from-cyan-400 to-teal-500' },
+  { color: '#6366f1', gradient: 'from-indigo-400 to-blue-500' },
+  { color: '#8b5cf6', gradient: 'from-violet-400 to-purple-500' },
+  { color: '#ec4899', gradient: 'from-pink-400 to-rose-500' },
+  { color: '#10b981', gradient: 'from-emerald-400 to-green-500' },
+  { color: '#f97316', gradient: 'from-orange-400 to-amber-500' },
+]
+
+function buildMetrics(defs: { key: string; label: string }[]): MetricDef[] {
+  return defs.map((d, i) => ({
+    key: d.key,
+    label: d.label,
+    color: COLORS[i % COLORS.length].color,
+    gradient: COLORS[i % COLORS.length].gradient,
+  }))
+}
+
+// ── Schema builder (same as diseaseController) ───────────
+
+function buildFormSchema(metrics: MetricDef[]) {
+  const weight = +(1 / metrics.length).toFixed(4)
+  const sliderQuestions = metrics.map((m, i) => ({
+    id: m.key,
+    type: 'slider',
+    label: m.label,
+    question: `How would you rate your ${m.label.toLowerCase()} TODAY?`,
+    required: true,
+    min: 0,
+    max: 10,
+    color: m.color,
+    gradient: m.gradient,
+    baselineKey: m.key,
+    defaultValue: 0,
+    weight: i === metrics.length - 1 ? +(1 - weight * (metrics.length - 1)).toFixed(4) : weight,
+  }))
+
+  return {
+    pages: [
+      {
+        id: 'symptoms',
+        title: 'Rate your symptoms',
+        subtitle: 'Takes 30 seconds',
+        questions: sliderQuestions,
+      },
+      {
+        id: 'health-checks',
+        title: 'Health Check-in',
+        subtitle: 'Quick yes/no questions',
+        description: 'Have you experienced any of the following?',
+        layout: 'grouped',
+        questions: [
+          { id: 'chestPainWeaknessConfusion', type: 'toggle', label: 'Sudden chest pain, severe weakness, or confusion?', question: 'Sudden chest pain, severe weakness, or confusion?', required: false, group: 'redFlags' },
+          { id: 'feverSweatsChills', type: 'toggle', label: 'New fever, sweats, or chills?', question: 'New fever, sweats, or chills?', required: false, group: 'redFlags' },
+          { id: 'missedOrNewMedication', type: 'toggle', label: 'Missed any medications or started a new one?', question: 'Missed any medications or started a new one?', required: false, group: 'redFlags' },
+        ],
+      },
+      {
+        id: 'sleep',
+        title: 'Sleep',
+        subtitle: 'How did you sleep?',
+        questions: [
+          { id: 'sleepHours', type: 'numeric', label: 'Hours Slept', question: 'How many hours did you sleep?', required: true, min: 0, max: 24, unit: 'hours', placeholder: '7', baselineKey: 'sleepHours', defaultValue: 7 },
+          { id: 'sleepQuality', type: 'likert', label: 'Sleep Quality', question: 'How was your sleep quality?', required: true, scale: 5, labels: { 1: 'Very Poor', 2: 'Poor', 3: 'Fair', 4: 'Good', 5: 'Very Good' }, baselineKey: 'sleepQuality', defaultValue: 3 },
+          { id: 'bedtime', type: 'time', label: 'Bedtime', question: 'What time did you go to bed?', required: true, baselineKey: 'usualBedtime', defaultValue: '22:00' },
+          { id: 'wakeTime', type: 'time', label: 'Wake Time', question: 'What time did you wake up?', required: true, baselineKey: 'usualWakeTime', defaultValue: '06:00' },
+        ],
+      },
+    ],
+  }
 }
 
 // ── Disease-specific log generators ──────────────────────
 
-/**
- * USER 1: Sarah — Systemic Lupus Erythematosus (SLE), 90 days
- *
- * SLE is an autoimmune disease with unpredictable flare-remission cycles.
- * Flares often triggered by UV exposure, stress, infection, or missed meds.
- * Pattern: stable → gradual onset → flare peak → slow recovery, repeating.
- * Dominant symptoms: fatigue, joint pain, occasionally breathing (pleuritis).
- */
-function generateSLE(b: UserSeed['baseline']): LogDay[] {
+function generateSLE(b: UserSeed['baseline'], metrics: string[], transient?: UserSeed['transientMetric']): LogDay[] {
   const logs: LogDay[] = []
+  const keys = metrics // ['jointPain', 'fatigue', 'skinRash', 'photosensitivity']
 
   for (let day = 0; day < 90; day++) {
-    let pain = b.painLevel, fatigue = b.fatigueLevel
-    let breath = b.breathingDifficulty, func = b.functionalLimitation
+    const responses: Record<string, number> = {}
     let sleep = b.sleepHours, quality = b.sleepQuality
     let flags: LogDay['flags'] = {}
     let notes = ''
 
-    // Phase 1: Stable (days 0-18)
+    // Stable (days 0-18)
     if (day < 19) {
-      pain = jitter(b.painLevel, 1)
-      fatigue = jitter(b.fatigueLevel, 1)
-      breath = jitter(b.breathingDifficulty, 0.5)
-      func = jitter(b.functionalLimitation, 1)
+      for (const k of keys) responses[k] = jitter(b.responses[k], 1)
       sleep = jitter(b.sleepHours, 0.5, 3, 12)
       quality = jitter(b.sleepQuality, 0.5, 1, 5)
       if (day === 5) notes = 'Good day, went for a short walk.'
       if (day === 12) notes = 'Mild joint stiffness in the morning.'
       if (day === 16) notes = 'Spent some time outdoors, wore sunscreen.'
     }
-    // Phase 2: Flare buildup (days 19-24)
+    // Flare buildup (days 19-24)
     else if (day < 25) {
       const ramp = (day - 19) / 5
-      pain = clamp(b.painLevel + Math.round(ramp * 4), 0, 10)
-      fatigue = clamp(b.fatigueLevel + Math.round(ramp * 4), 0, 10)
-      breath = clamp(b.breathingDifficulty + Math.round(ramp * 2), 0, 10)
-      func = clamp(b.functionalLimitation + Math.round(ramp * 3), 0, 10)
+      responses[keys[0]] = clamp(b.responses[keys[0]] + Math.round(ramp * 4), 0, 10)  // jointPain
+      responses[keys[1]] = clamp(b.responses[keys[1]] + Math.round(ramp * 4), 0, 10)  // fatigue
+      responses[keys[2]] = clamp(b.responses[keys[2]] + Math.round(ramp * 2), 0, 10)  // skinRash
+      responses[keys[3]] = clamp(b.responses[keys[3]] + Math.round(ramp * 2), 0, 10)  // photosensitivity
       sleep = clamp(b.sleepHours - Math.round(ramp * 2), 3, 12)
       quality = clamp(b.sleepQuality - Math.round(ramp * 1.5), 1, 5)
       if (day === 20) notes = 'Joints aching more than usual.'
@@ -109,12 +187,12 @@ function generateSLE(b: UserSeed['baseline']): LogDay[] {
       if (day === 23) { flags.meds = true; notes = 'Missed morning dose of HCQ.' }
       if (day === 24) notes = 'Butterfly rash appearing on cheeks.'
     }
-    // Phase 3: Flare peak (days 25-31)
+    // Flare peak (days 25-31)
     else if (day < 32) {
-      pain = jitter(8, 1)
-      fatigue = jitter(9, 0.5)
-      breath = jitter(5, 1)
-      func = jitter(7, 1)
+      responses[keys[0]] = jitter(8, 1)
+      responses[keys[1]] = jitter(9, 0.5)
+      responses[keys[2]] = jitter(7, 1)
+      responses[keys[3]] = jitter(5, 1)
       sleep = jitter(4, 0.5, 3, 12)
       quality = jitter(1, 0.5, 1, 5)
       if (day === 25) { flags.fever = true; notes = 'Fever 38.4C overnight. Called rheumatologist.' }
@@ -122,102 +200,96 @@ function generateSLE(b: UserSeed['baseline']): LogDay[] {
       if (day === 28) { flags.meds = true; notes = 'New medication: Prednisone 40mg taper.' }
       if (day === 30) notes = 'Fever broke, still very weak.'
     }
-    // Phase 4: Recovery (days 32-45)
+    // Recovery (days 32-45)
     else if (day < 46) {
       const recover = (day - 32) / 13
-      pain = clamp(8 - Math.round(recover * 4), 0, 10)
-      fatigue = clamp(9 - Math.round(recover * 4), 0, 10)
-      breath = clamp(5 - Math.round(recover * 3), 0, 10)
-      func = clamp(7 - Math.round(recover * 4), 0, 10)
+      responses[keys[0]] = clamp(8 - Math.round(recover * 4), 0, 10)
+      responses[keys[1]] = clamp(9 - Math.round(recover * 4), 0, 10)
+      responses[keys[2]] = clamp(7 - Math.round(recover * 4), 0, 10)
+      responses[keys[3]] = clamp(5 - Math.round(recover * 3), 0, 10)
       sleep = clamp(4 + Math.round(recover * 3), 3, 12)
       quality = clamp(1 + Math.round(recover * 2), 1, 5)
       if (day === 35) notes = 'Slowly improving. Tapering prednisone.'
       if (day === 40) notes = 'Managed light housework today.'
       if (day === 44) notes = 'Almost back to baseline.'
     }
-    // Phase 5: Second stable (days 46-64)
+    // Second stable (days 46-64)
     else if (day < 65) {
-      pain = jitter(b.painLevel, 1)
-      fatigue = jitter(b.fatigueLevel + 1, 1)
-      breath = jitter(b.breathingDifficulty, 0.5)
-      func = jitter(b.functionalLimitation, 1)
+      for (const k of keys) responses[k] = jitter(b.responses[k] + (k === keys[1] ? 1 : 0), 1)
       sleep = jitter(b.sleepHours, 0.5, 3, 12)
       quality = jitter(b.sleepQuality, 0.5, 1, 5)
       if (day === 50) notes = 'Feeling much more like myself.'
       if (day === 58) notes = 'Good energy today, cooked dinner.'
     }
-    // Phase 6: Minor flare (days 65-72)
+    // Minor flare (days 65-72)
     else if (day < 73) {
       const ramp = Math.sin(((day - 65) / 7) * Math.PI)
-      pain = clamp(b.painLevel + Math.round(ramp * 2), 0, 10)
-      fatigue = clamp(b.fatigueLevel + Math.round(ramp * 2), 0, 10)
-      breath = jitter(b.breathingDifficulty, 1)
-      func = clamp(b.functionalLimitation + Math.round(ramp * 2), 0, 10)
-      sleep = clamp(b.sleepHours - Math.round(ramp * 1), 3, 12)
-      quality = clamp(b.sleepQuality - Math.round(ramp * 1), 1, 5)
+      for (const k of keys) responses[k] = clamp(b.responses[k] + Math.round(ramp * 2), 0, 10)
+      sleep = clamp(b.sleepHours - Math.round(ramp), 3, 12)
+      quality = clamp(b.sleepQuality - Math.round(ramp), 1, 5)
       if (day === 68) notes = 'Stress at work, joints flaring up.'
       if (day === 70) notes = 'Mild flare, manageable with rest.'
     }
-    // Phase 7: Return to stable (days 73-89)
+    // Return to stable (days 73-89)
     else {
-      pain = jitter(b.painLevel, 1)
-      fatigue = jitter(b.fatigueLevel, 1)
-      breath = jitter(b.breathingDifficulty, 0.5)
-      func = jitter(b.functionalLimitation, 1)
+      for (const k of keys) responses[k] = jitter(b.responses[k], 1)
       sleep = jitter(b.sleepHours, 0.5, 3, 12)
       quality = jitter(b.sleepQuality, 0.5, 1, 5)
       if (day === 80) notes = 'Good week. Follow-up labs look stable.'
       if (day === 87) notes = 'Feeling well, maintaining routine.'
     }
 
+    // Transient symptom simulation (butterflyRash)
+    if (transient && day >= transient.appearsAtDay) {
+      // Notes mentioning the symptom for 3 consecutive days
+      if (day === transient.appearsAtDay) notes = 'Noticed a rash spreading across my cheeks.'
+      if (day === transient.appearsAtDay + 1) notes = 'Butterfly rash still visible, skin feels warm.'
+      if (day === transient.appearsAtDay + 2) notes = 'Rash persists across nose and cheeks.'
+
+      // After promotion, track it as a value
+      if (day >= transient.promoteAtDay) {
+        const severity = day < 50 ? jitter(5, 2) : jitter(2, 1)
+        responses[transient.def.key] = severity
+      }
+    }
+
     logs.push({
-      pain, fatigue, breath, func, sleep, quality,
+      responses, sleep, quality,
       bed: pickBedtime(b.usualBedtime, day >= 25 && day < 32 ? 60 : 30),
-      wake: pickWakeTime(b.usualWakeTime, 30),
+      wake: pickBedtime(b.usualWakeTime, 30),
       flags, notes,
     })
   }
   return logs
 }
 
-/**
- * USER 2: Marcus — Pulmonary Arterial Hypertension (PAH), 60 days
- *
- * PAH is progressive elevated pressure in pulmonary arteries.
- * Dominant symptom: breathing difficulty, exercise intolerance, fatigue.
- * Pain is low unless right heart failure develops.
- * Pattern: gradually worsening breathing → new medication → stabilization.
- */
-function generatePAH(b: UserSeed['baseline']): LogDay[] {
+function generatePAH(b: UserSeed['baseline'], metrics: string[], transient?: UserSeed['transientMetric']): LogDay[] {
   const logs: LogDay[] = []
+  const keys = metrics
 
   for (let day = 0; day < 60; day++) {
-    let pain = b.painLevel, fatigue = b.fatigueLevel
-    let breath = b.breathingDifficulty, func = b.functionalLimitation
+    const responses: Record<string, number> = {}
     let sleep = b.sleepHours, quality = b.sleepQuality
     let flags: LogDay['flags'] = {}
     let notes = ''
 
-    // Phase 1: Stable but gradually worsening (days 0-20)
     if (day < 21) {
       const drift = day / 20 * 2
-      pain = jitter(b.painLevel, 0.5)
-      fatigue = clamp(b.fatigueLevel + Math.round(drift * 0.8), 0, 10)
-      breath = clamp(b.breathingDifficulty + Math.round(drift), 0, 10)
-      func = clamp(b.functionalLimitation + Math.round(drift * 0.6), 0, 10)
+      responses[keys[0]] = clamp(b.responses[keys[0]] + Math.round(drift), 0, 10) // breathingDifficulty
+      responses[keys[1]] = clamp(b.responses[keys[1]] + Math.round(drift * 0.8), 0, 10) // exerciseIntolerance
+      responses[keys[2]] = clamp(b.responses[keys[2]] + Math.round(drift * 0.8), 0, 10) // fatigue
+      responses[keys[3]] = clamp(b.responses[keys[3]] + Math.round(drift * 0.6), 0, 10) // chestTightness
       sleep = clamp(b.sleepHours - Math.round(drift * 0.3), 3, 12)
       quality = jitter(b.sleepQuality, 0.5, 1, 5)
       if (day === 7) notes = 'Slightly more winded on stairs.'
       if (day === 14) notes = 'Had to rest halfway through grocery run.'
       if (day === 18) notes = 'Noticed ankles swelling in evening.'
-    }
-    // Phase 2: Worsening episode (days 21-32)
-    else if (day < 33) {
+    } else if (day < 33) {
       const severity = Math.sin(((day - 21) / 11) * Math.PI)
-      pain = jitter(b.painLevel + 1, 1)
-      fatigue = clamp(b.fatigueLevel + 2 + Math.round(severity * 3), 0, 10)
-      breath = clamp(b.breathingDifficulty + 2 + Math.round(severity * 3), 0, 10)
-      func = clamp(b.functionalLimitation + 2 + Math.round(severity * 3), 0, 10)
+      responses[keys[0]] = clamp(b.responses[keys[0]] + 2 + Math.round(severity * 3), 0, 10)
+      responses[keys[1]] = clamp(b.responses[keys[1]] + 2 + Math.round(severity * 3), 0, 10)
+      responses[keys[2]] = clamp(b.responses[keys[2]] + 2 + Math.round(severity * 3), 0, 10)
+      responses[keys[3]] = clamp(b.responses[keys[3]] + 2 + Math.round(severity * 2), 0, 10)
       sleep = clamp(b.sleepHours - 1 - Math.round(severity), 3, 12)
       quality = clamp(b.sleepQuality - Math.round(severity * 1.5), 1, 5)
       if (day === 22) notes = 'Shortness of breath at rest now.'
@@ -225,71 +297,57 @@ function generatePAH(b: UserSeed['baseline']): LogDay[] {
       if (day === 26) { flags.meds = true; notes = 'Started Sildenafil. Admitted overnight.' }
       if (day === 28) notes = 'Discharged. Oxygen sat improved.'
       if (day === 31) notes = 'Still adjusting to new medication.'
-    }
-    // Phase 3: Medication response (days 33-45)
-    else if (day < 46) {
+    } else if (day < 46) {
       const recover = (day - 33) / 12
-      pain = jitter(b.painLevel, 0.5)
-      fatigue = clamp(b.fatigueLevel + 3 - Math.round(recover * 3), 0, 10)
-      breath = clamp(b.breathingDifficulty + 4 - Math.round(recover * 3.5), 0, 10)
-      func = clamp(b.functionalLimitation + 3 - Math.round(recover * 2.5), 0, 10)
+      responses[keys[0]] = clamp(b.responses[keys[0]] + 4 - Math.round(recover * 3.5), 0, 10)
+      responses[keys[1]] = clamp(b.responses[keys[1]] + 3 - Math.round(recover * 3), 0, 10)
+      responses[keys[2]] = clamp(b.responses[keys[2]] + 3 - Math.round(recover * 3), 0, 10)
+      responses[keys[3]] = clamp(b.responses[keys[3]] + 2 - Math.round(recover * 2), 0, 10)
       sleep = clamp(b.sleepHours - 1 + Math.round(recover * 1.5), 3, 12)
       quality = clamp(b.sleepQuality - 1 + Math.round(recover * 1.5), 1, 5)
       if (day === 36) notes = 'Breathing noticeably better on Sildenafil.'
       if (day === 42) notes = 'Walked 10 minutes without stopping.'
-    }
-    // Phase 4: New stable (days 46-59)
-    else {
-      pain = jitter(b.painLevel, 0.5)
-      fatigue = jitter(b.fatigueLevel + 1, 1)
-      breath = jitter(b.breathingDifficulty + 1, 1)
-      func = jitter(b.functionalLimitation + 1, 1)
+    } else {
+      for (const k of keys) responses[k] = jitter(b.responses[k] + 1, 1)
       sleep = jitter(b.sleepHours, 0.5, 3, 12)
       quality = jitter(b.sleepQuality, 0.5, 1, 5)
       if (day === 50) notes = 'Stable. Pulmonologist pleased with progress.'
       if (day === 56) notes = 'Managed a full day out with family.'
     }
 
-    logs.push({
-      pain, fatigue, breath, func, sleep, quality,
-      bed: pickBedtime(b.usualBedtime, 30),
-      wake: pickWakeTime(b.usualWakeTime, 30),
-      flags, notes,
-    })
+    // Transient: ankleSwelling
+    if (transient && day >= transient.appearsAtDay) {
+      if (day === transient.appearsAtDay) notes = 'Ankles are swollen, feels tight.'
+      if (day === transient.appearsAtDay + 1) notes = 'Ankle swelling persists, hard to walk.'
+      if (day === transient.appearsAtDay + 2) notes = 'Swelling still there, elevating helps.'
+      if (day >= transient.promoteAtDay) {
+        responses[transient.def.key] = day < 35 ? jitter(5, 2) : jitter(2, 1)
+      }
+    }
+
+    logs.push({ responses, sleep, quality, bed: pickBedtime(b.usualBedtime, 30), wake: pickBedtime(b.usualWakeTime, 30), flags, notes })
   }
   return logs
 }
 
-/**
- * USER 3: Priya — Hypermobile Ehlers-Danlos Syndrome (hEDS), 90 days
- *
- * hEDS is a connective tissue disorder causing joint hypermobility, chronic pain,
- * and fatigue. Highly variable day-to-day. Flares triggered by physical overexertion,
- * weather changes, hormonal cycles. Pain and functional limitation dominant.
- * Breathing usually not affected. Sleep disrupted by pain.
- */
-function generateEDS(b: UserSeed['baseline']): LogDay[] {
+function generateEDS(b: UserSeed['baseline'], metrics: string[], transient?: UserSeed['transientMetric']): LogDay[] {
   const logs: LogDay[] = []
+  const keys = metrics
 
   for (let day = 0; day < 90; day++) {
-    // EDS has high day-to-day variability
-    const randomBad = Math.random()
-    let pain: number, fatigue: number, breath: number, func: number
+    const responses: Record<string, number> = {}
     let sleep: number, quality: number
     let flags: LogDay['flags'] = {}
     let notes = ''
+    const randomBad = Math.random()
 
-    // Cluster flare pattern every ~20 days (days 15-20, 38-44, 60-66)
-    const inFlareCluster =
-      (day >= 15 && day < 21) ||
-      (day >= 38 && day < 45) ||
-      (day >= 60 && day < 67)
+    const inFlareCluster = (day >= 15 && day < 21) || (day >= 38 && day < 45) || (day >= 60 && day < 67)
 
     if (inFlareCluster) {
-      pain = jitter(b.painLevel + 3, 1)
-      fatigue = jitter(b.fatigueLevel + 2, 1)
-      breath = jitter(b.breathingDifficulty, 0.5)
-      func = jitter(b.functionalLimitation + 3, 1)
+      responses[keys[0]] = jitter(b.responses[keys[0]] + 3, 1)  // jointPain
+      responses[keys[1]] = jitter(b.responses[keys[1]] + 2, 1)  // subluxations
+      responses[keys[2]] = jitter(b.responses[keys[2]] + 2, 1)  // fatigue
+      responses[keys[3]] = jitter(b.responses[keys[3]] + 3, 1)  // functionalLimitation
       sleep = jitter(b.sleepHours - 1.5, 0.5, 3, 12)
       quality = jitter(b.sleepQuality - 1, 0.5, 1, 5)
       if (day === 16) notes = 'Multiple joint subluxations today.'
@@ -298,106 +356,68 @@ function generateEDS(b: UserSeed['baseline']): LogDay[] {
       if (day === 42) notes = 'Cannot grip anything, hands are bad.'
       if (day === 61) notes = 'Hormonal flare, whole body aching.'
       if (day === 65) notes = 'Hip subluxed twice today.'
-    }
-    // Random bad days (~15% chance outside clusters)
-    else if (randomBad < 0.15) {
-      pain = jitter(b.painLevel + 2, 1)
-      fatigue = jitter(b.fatigueLevel + 1, 1)
-      breath = jitter(b.breathingDifficulty, 0.5)
-      func = jitter(b.functionalLimitation + 2, 1)
+    } else if (randomBad < 0.15) {
+      for (const k of keys) responses[k] = jitter(b.responses[k] + 2, 1)
       sleep = jitter(b.sleepHours - 1, 0.5, 3, 12)
       quality = jitter(b.sleepQuality - 1, 0.5, 1, 5)
-      const badNotes = [
-        'Overdid it yesterday, paying for it today.',
-        'Shoulder popped out of place.',
-        'Woke up with back spasms.',
-        'Brain fog really bad today.',
-      ]
+      const badNotes = ['Overdid it yesterday.', 'Shoulder popped out.', 'Back spasms.', 'Brain fog really bad.']
       notes = badNotes[Math.floor(Math.random() * badNotes.length)]
-    }
-    // Random good days (~20% chance)
-    else if (randomBad > 0.80) {
-      pain = jitter(b.painLevel - 1, 0.5)
-      fatigue = jitter(b.fatigueLevel - 1, 0.5)
-      breath = jitter(b.breathingDifficulty, 0.5)
-      func = jitter(b.functionalLimitation - 1, 0.5)
+    } else if (randomBad > 0.80) {
+      for (const k of keys) responses[k] = jitter(b.responses[k] - 1, 0.5)
       sleep = jitter(b.sleepHours + 1, 0.5, 3, 12)
       quality = jitter(b.sleepQuality + 1, 0.5, 1, 5)
-      const goodNotes = [
-        'Actually a good day, got things done.',
-        'Lower pain, managed a gentle swim.',
-        'Slept well for once.',
-        '',
-      ]
+      const goodNotes = ['Good day, got things done.', 'Lower pain, gentle swim.', 'Slept well.', '']
       notes = goodNotes[Math.floor(Math.random() * goodNotes.length)]
-    }
-    // Normal days
-    else {
-      pain = jitter(b.painLevel, 1.5)
-      fatigue = jitter(b.fatigueLevel, 1)
-      breath = jitter(b.breathingDifficulty, 0.5)
-      func = jitter(b.functionalLimitation, 1.5)
+    } else {
+      for (const k of keys) responses[k] = jitter(b.responses[k], 1.5)
       sleep = jitter(b.sleepHours, 0.5, 3, 12)
       quality = jitter(b.sleepQuality, 0.5, 1, 5)
     }
 
-    // Occasional missed meds
     if (day === 30 || day === 55) {
       flags.meds = true
-      notes = day === 30
-        ? 'Forgot pain medication, rough evening.'
-        : 'Pharmacy delay, missed evening dose.'
+      notes = day === 30 ? 'Forgot pain medication, rough evening.' : 'Pharmacy delay, missed dose.'
     }
 
-    logs.push({
-      pain, fatigue, breath, func, sleep, quality,
-      bed: pickBedtime(b.usualBedtime, inFlareCluster ? 60 : 30),
-      wake: pickWakeTime(b.usualWakeTime, 30),
-      flags, notes,
-    })
+    // Transient: brainFog
+    if (transient && day >= transient.appearsAtDay) {
+      if (day === transient.appearsAtDay) notes = 'Brain fog is terrible, can\'t concentrate.'
+      if (day === transient.appearsAtDay + 1) notes = 'Brain fog continues, lost my train of thought repeatedly.'
+      if (day === transient.appearsAtDay + 2) notes = 'Still foggy, cognitive issues persistent.'
+      if (day >= transient.promoteAtDay) {
+        responses[transient.def.key] = inFlareCluster ? jitter(6, 2) : jitter(3, 1.5)
+      }
+    }
+
+    logs.push({ responses, sleep, quality, bed: pickBedtime(b.usualBedtime, inFlareCluster ? 60 : 30), wake: pickBedtime(b.usualWakeTime, 30), flags, notes })
   }
   return logs
 }
 
-/**
- * USER 4: James — Myasthenia Gravis, 45 days
- *
- * Autoimmune neuromuscular disease causing muscle weakness and fatigue.
- * Worsens with activity, improves with rest. Can affect breathing (crisis).
- * Dominant: fatigue, functional limitation. Pain is low.
- * Pattern: fluctuating weakness → exacerbation → IVIG treatment → recovery.
- */
-function generateMG(b: UserSeed['baseline']): LogDay[] {
+function generateMG(b: UserSeed['baseline'], metrics: string[], transient?: UserSeed['transientMetric']): LogDay[] {
   const logs: LogDay[] = []
+  const keys = metrics
 
   for (let day = 0; day < 45; day++) {
-    let pain = b.painLevel, fatigue = b.fatigueLevel
-    let breath = b.breathingDifficulty, func = b.functionalLimitation
+    const responses: Record<string, number> = {}
     let sleep = b.sleepHours, quality = b.sleepQuality
     let flags: LogDay['flags'] = {}
     let notes = ''
 
-    // Phase 1: Fluctuating baseline (days 0-12)
     if (day < 13) {
-      // MG has diurnal variation - worse in evening
-      pain = jitter(b.painLevel, 0.5)
-      fatigue = jitter(b.fatigueLevel, 1.5)
-      breath = jitter(b.breathingDifficulty, 1)
-      func = jitter(b.functionalLimitation, 1.5)
+      for (const k of keys) responses[k] = jitter(b.responses[k], 1.5)
       sleep = jitter(b.sleepHours, 0.5, 3, 12)
       quality = jitter(b.sleepQuality, 0.5, 1, 5)
       if (day === 3) notes = 'Double vision brief episode this evening.'
       if (day === 8) notes = 'Difficulty swallowing at dinner.'
       if (day === 11) notes = 'Arms very weak by afternoon.'
-    }
-    // Phase 2: Exacerbation (days 13-22)
-    else if (day < 23) {
+    } else if (day < 23) {
       const ramp = Math.min((day - 13) / 6, 1)
       const peak = day >= 17 && day < 22
-      pain = jitter(b.painLevel + 1, 0.5)
-      fatigue = clamp(b.fatigueLevel + Math.round(ramp * 4) + (peak ? 1 : 0), 0, 10)
-      breath = clamp(b.breathingDifficulty + Math.round(ramp * 3) + (peak ? 1 : 0), 0, 10)
-      func = clamp(b.functionalLimitation + Math.round(ramp * 4) + (peak ? 1 : 0), 0, 10)
+      responses[keys[0]] = clamp(b.responses[keys[0]] + Math.round(ramp * 4) + (peak ? 1 : 0), 0, 10) // muscleWeakness
+      responses[keys[1]] = clamp(b.responses[keys[1]] + Math.round(ramp * 4) + (peak ? 1 : 0), 0, 10) // fatigue
+      responses[keys[2]] = clamp(b.responses[keys[2]] + Math.round(ramp * 3) + (peak ? 1 : 0), 0, 10) // swallowingDifficulty
+      responses[keys[3]] = clamp(b.responses[keys[3]] + Math.round(ramp * 3) + (peak ? 1 : 0), 0, 10) // breathingDifficulty
       sleep = clamp(b.sleepHours - Math.round(ramp * 2), 3, 12)
       quality = clamp(b.sleepQuality - Math.round(ramp * 1.5), 1, 5)
       if (day === 14) notes = 'Drooping eyelids worse than usual.'
@@ -405,79 +425,63 @@ function generateMG(b: UserSeed['baseline']): LogDay[] {
       if (day === 18) { flags.meds = true; notes = 'Started IVIG treatment in hospital.' }
       if (day === 19) notes = 'Day 2 of IVIG. Headache from infusion.'
       if (day === 21) notes = 'Discharged. Feeling slightly better.'
-    }
-    // Phase 3: Post-treatment recovery (days 23-35)
-    else if (day < 36) {
+    } else if (day < 36) {
       const recover = (day - 23) / 12
-      pain = jitter(b.painLevel, 0.5)
-      fatigue = clamp(b.fatigueLevel + 4 - Math.round(recover * 4), 0, 10)
-      breath = clamp(b.breathingDifficulty + 3 - Math.round(recover * 3), 0, 10)
-      func = clamp(b.functionalLimitation + 4 - Math.round(recover * 4), 0, 10)
+      responses[keys[0]] = clamp(b.responses[keys[0]] + 4 - Math.round(recover * 4), 0, 10)
+      responses[keys[1]] = clamp(b.responses[keys[1]] + 4 - Math.round(recover * 4), 0, 10)
+      responses[keys[2]] = clamp(b.responses[keys[2]] + 3 - Math.round(recover * 3), 0, 10)
+      responses[keys[3]] = clamp(b.responses[keys[3]] + 3 - Math.round(recover * 3), 0, 10)
       sleep = clamp(b.sleepHours - 1 + Math.round(recover * 1.5), 3, 12)
       quality = clamp(b.sleepQuality - 1 + Math.round(recover * 1.5), 1, 5)
       if (day === 26) notes = 'Swallowing easier now.'
       if (day === 30) notes = 'Can hold a book again without arms shaking.'
       if (day === 34) notes = 'IVIG really helped. Neurologist follow-up.'
-    }
-    // Phase 4: Near-baseline (days 36-44)
-    else {
-      pain = jitter(b.painLevel, 0.5)
-      fatigue = jitter(b.fatigueLevel, 1)
-      breath = jitter(b.breathingDifficulty, 0.5)
-      func = jitter(b.functionalLimitation, 1)
+    } else {
+      for (const k of keys) responses[k] = jitter(b.responses[k], 1)
       sleep = jitter(b.sleepHours, 0.5, 3, 12)
       quality = jitter(b.sleepQuality, 0.5, 1, 5)
       if (day === 38) notes = 'Good day, minimal ptosis.'
       if (day === 43) notes = 'Feeling strongest in weeks.'
     }
 
-    logs.push({
-      pain, fatigue, breath, func, sleep, quality,
-      bed: pickBedtime(b.usualBedtime, 30),
-      wake: pickWakeTime(b.usualWakeTime, 30),
-      flags, notes,
-    })
+    // Transient: doubleVision
+    if (transient && day >= transient.appearsAtDay) {
+      if (day === transient.appearsAtDay) notes = 'Seeing double again, especially when tired.'
+      if (day === transient.appearsAtDay + 1) notes = 'Double vision persists, hard to read.'
+      if (day === transient.appearsAtDay + 2) notes = 'Still having double vision episodes.'
+      if (day >= transient.promoteAtDay) {
+        responses[transient.def.key] = day < 23 ? jitter(5, 2) : jitter(2, 1)
+      }
+    }
+
+    logs.push({ responses, sleep, quality, bed: pickBedtime(b.usualBedtime, 30), wake: pickBedtime(b.usualWakeTime, 30), flags, notes })
   }
   return logs
 }
 
-/**
- * USER 5: Elena — Systemic Sclerosis (Scleroderma), 30 days
- *
- * Autoimmune disease affecting skin, blood vessels, and organs.
- * Raynaud's phenomenon (cold triggers), skin tightening causes pain,
- * lung involvement (ILD) causes breathing issues, fatigue from inflammation.
- * Pattern: cold weather → Raynaud's flare → gradual improvement with warming.
- */
-function generateSSc(b: UserSeed['baseline']): LogDay[] {
+function generateSSc(b: UserSeed['baseline'], metrics: string[], transient?: UserSeed['transientMetric']): LogDay[] {
   const logs: LogDay[] = []
+  const keys = metrics
 
   for (let day = 0; day < 30; day++) {
-    let pain = b.painLevel, fatigue = b.fatigueLevel
-    let breath = b.breathingDifficulty, func = b.functionalLimitation
+    const responses: Record<string, number> = {}
     let sleep = b.sleepHours, quality = b.sleepQuality
     let flags: LogDay['flags'] = {}
     let notes = ''
 
-    // Phase 1: Baseline learning (days 0-8)
     if (day < 9) {
-      pain = jitter(b.painLevel, 1)
-      fatigue = jitter(b.fatigueLevel, 1)
-      breath = jitter(b.breathingDifficulty, 0.5)
-      func = jitter(b.functionalLimitation, 1)
+      for (const k of keys) responses[k] = jitter(b.responses[k], 1)
       sleep = jitter(b.sleepHours, 0.5, 3, 12)
       quality = jitter(b.sleepQuality, 0.5, 1, 5)
       if (day === 2) notes = 'Getting used to tracking symptoms.'
       if (day === 5) notes = 'Fingers stiff in the morning as usual.'
       if (day === 8) notes = 'Skin feels tighter on forearms.'
-    }
-    // Phase 2: Cold weather Raynaud's flare (days 9-18)
-    else if (day < 19) {
+    } else if (day < 19) {
       const severity = Math.sin(((day - 9) / 9) * Math.PI)
-      pain = clamp(b.painLevel + Math.round(severity * 3), 0, 10)
-      fatigue = clamp(b.fatigueLevel + Math.round(severity * 2), 0, 10)
-      breath = clamp(b.breathingDifficulty + Math.round(severity * 1.5), 0, 10)
-      func = clamp(b.functionalLimitation + Math.round(severity * 3), 0, 10)
+      responses[keys[0]] = clamp(b.responses[keys[0]] + Math.round(severity * 3), 0, 10) // skinTightness
+      responses[keys[1]] = clamp(b.responses[keys[1]] + Math.round(severity * 3), 0, 10) // fingerPain
+      responses[keys[2]] = clamp(b.responses[keys[2]] + Math.round(severity * 2), 0, 10) // fatigue
+      responses[keys[3]] = clamp(b.responses[keys[3]] + Math.round(severity * 1.5), 0, 10) // breathingDifficulty
       sleep = clamp(b.sleepHours - Math.round(severity * 1.5), 3, 12)
       quality = clamp(b.sleepQuality - Math.round(severity), 1, 5)
       if (day === 10) notes = 'Cold snap. Fingers turning white and blue.'
@@ -485,14 +489,12 @@ function generateSSc(b: UserSeed['baseline']): LogDay[] {
       if (day === 13) { flags.fever = true; notes = 'Low fever, ulcer may be infected.' }
       if (day === 14) { flags.meds = true; notes = 'Started Nifedipine for Raynaud\'s.' }
       if (day === 16) notes = 'Fingers slightly less cold. Nifedipine helping.'
-    }
-    // Phase 3: Gradual improvement (days 19-29)
-    else {
+    } else {
       const recover = (day - 19) / 10
-      pain = clamp(b.painLevel + 2 - Math.round(recover * 2), 0, 10)
-      fatigue = clamp(b.fatigueLevel + 1 - Math.round(recover * 1), 0, 10)
-      breath = jitter(b.breathingDifficulty, 0.5)
-      func = clamp(b.functionalLimitation + 2 - Math.round(recover * 2), 0, 10)
+      responses[keys[0]] = clamp(b.responses[keys[0]] + 2 - Math.round(recover * 2), 0, 10)
+      responses[keys[1]] = clamp(b.responses[keys[1]] + 2 - Math.round(recover * 2), 0, 10)
+      responses[keys[2]] = clamp(b.responses[keys[2]] + 1 - Math.round(recover), 0, 10)
+      responses[keys[3]] = jitter(b.responses[keys[3]], 0.5)
       sleep = clamp(b.sleepHours - 1 + Math.round(recover), 3, 12)
       quality = clamp(b.sleepQuality - 1 + Math.round(recover), 1, 5)
       if (day === 22) notes = 'Warming up outside. Hands much better.'
@@ -500,12 +502,17 @@ function generateSSc(b: UserSeed['baseline']): LogDay[] {
       if (day === 28) notes = 'Nearly back to normal. Keep wearing gloves.'
     }
 
-    logs.push({
-      pain, fatigue, breath, func, sleep, quality,
-      bed: pickBedtime(b.usualBedtime, 30),
-      wake: pickWakeTime(b.usualWakeTime, 30),
-      flags, notes,
-    })
+    // Transient: raynaudsSymptoms
+    if (transient && day >= transient.appearsAtDay) {
+      if (day === transient.appearsAtDay) notes = 'Raynaud\'s attack, fingers turned white then blue.'
+      if (day === transient.appearsAtDay + 1) notes = 'Another Raynaud\'s episode, very painful.'
+      if (day === transient.appearsAtDay + 2) notes = 'Raynaud\'s continuing, color changes in fingers.'
+      if (day >= transient.promoteAtDay) {
+        responses[transient.def.key] = day < 19 ? jitter(6, 2) : jitter(3, 1)
+      }
+    }
+
+    logs.push({ responses, sleep, quality, bed: pickBedtime(b.usualBedtime, 30), wake: pickBedtime(b.usualWakeTime, 30), flags, notes })
   }
   return logs
 }
@@ -518,16 +525,27 @@ const USERS: UserSeed[] = [
     email: 'sarah@hackrare.com',
     password: 'sarah123',
     profile: {
-      age: 32, heightCm: 165, weightKg: 58,
-      bloodGroup: 'A+',
+      age: 32, heightCm: 165, weightKg: 58, bloodGroup: 'A+',
       allergies: 'Sulfa drugs',
       currentMedications: 'Hydroxychloroquine 200mg BID, Folic acid 5mg daily',
     },
     baseline: {
       primaryCondition: 'Systemic Lupus Erythematosus (SLE)',
       conditionDurationMonths: 48,
-      painLevel: 4, fatigueLevel: 5, breathingDifficulty: 2, functionalLimitation: 3,
+      responses: { jointPain: 4, fatigue: 5, skinRash: 2, photosensitivity: 3 },
       sleepHours: 7, sleepQuality: 3, usualBedtime: '23:00', usualWakeTime: '07:00',
+    },
+    finalMetrics: buildMetrics([
+      { key: 'jointPain', label: 'Joint Pain' },
+      { key: 'fatigue', label: 'Fatigue' },
+      { key: 'skinRash', label: 'Skin Rash' },
+      { key: 'photosensitivity', label: 'Photosensitivity' },
+    ]),
+    transientMetric: {
+      def: { key: 'butterflyRash', label: 'Butterfly Rash', color: '#ec4899', gradient: 'from-pink-400 to-rose-500' },
+      appearsAtDay: 40,
+      promoteAtDay: 43,
+      baselineValue: 0,
     },
     totalDays: 90,
     generateLogs: generateSLE,
@@ -537,16 +555,27 @@ const USERS: UserSeed[] = [
     email: 'marcus@hackrare.com',
     password: 'marcus123',
     profile: {
-      age: 45, heightCm: 180, weightKg: 82,
-      bloodGroup: 'O-',
+      age: 45, heightCm: 180, weightKg: 82, bloodGroup: 'O-',
       allergies: 'None',
       currentMedications: 'Ambrisentan 10mg daily, Warfarin 5mg daily',
     },
     baseline: {
       primaryCondition: 'Pulmonary Arterial Hypertension (PAH)',
       conditionDurationMonths: 24,
-      painLevel: 2, fatigueLevel: 4, breathingDifficulty: 5, functionalLimitation: 4,
+      responses: { breathingDifficulty: 5, exerciseIntolerance: 4, fatigue: 4, chestTightness: 3 },
       sleepHours: 6, sleepQuality: 3, usualBedtime: '22:30', usualWakeTime: '06:30',
+    },
+    finalMetrics: buildMetrics([
+      { key: 'breathingDifficulty', label: 'Breathing Difficulty' },
+      { key: 'exerciseIntolerance', label: 'Exercise Intolerance' },
+      { key: 'fatigue', label: 'Fatigue' },
+      { key: 'chestTightness', label: 'Chest Tightness' },
+    ]),
+    transientMetric: {
+      def: { key: 'ankleSwelling', label: 'Ankle Swelling', color: '#10b981', gradient: 'from-emerald-400 to-green-500' },
+      appearsAtDay: 18,
+      promoteAtDay: 21,
+      baselineValue: 0,
     },
     totalDays: 60,
     generateLogs: generatePAH,
@@ -556,16 +585,27 @@ const USERS: UserSeed[] = [
     email: 'priya@hackrare.com',
     password: 'priya123',
     profile: {
-      age: 27, heightCm: 160, weightKg: 52,
-      bloodGroup: 'B+',
+      age: 27, heightCm: 160, weightKg: 52, bloodGroup: 'B+',
       allergies: 'NSAIDs (GI intolerance)',
       currentMedications: 'Duloxetine 60mg daily, Magnesium glycinate 400mg',
     },
     baseline: {
       primaryCondition: 'Hypermobile Ehlers-Danlos Syndrome (hEDS)',
       conditionDurationMonths: 72,
-      painLevel: 5, fatigueLevel: 4, breathingDifficulty: 1, functionalLimitation: 4,
+      responses: { jointPain: 5, subluxations: 4, fatigue: 4, functionalLimitation: 4 },
       sleepHours: 6, sleepQuality: 2, usualBedtime: '00:00', usualWakeTime: '08:00',
+    },
+    finalMetrics: buildMetrics([
+      { key: 'jointPain', label: 'Joint Pain' },
+      { key: 'subluxations', label: 'Subluxations' },
+      { key: 'fatigue', label: 'Fatigue' },
+      { key: 'functionalLimitation', label: 'Functional Limitation' },
+    ]),
+    transientMetric: {
+      def: { key: 'brainFog', label: 'Brain Fog', color: '#8b5cf6', gradient: 'from-violet-400 to-purple-500' },
+      appearsAtDay: 30,
+      promoteAtDay: 33,
+      baselineValue: 0,
     },
     totalDays: 90,
     generateLogs: generateEDS,
@@ -575,16 +615,27 @@ const USERS: UserSeed[] = [
     email: 'james@hackrare.com',
     password: 'james123',
     profile: {
-      age: 55, heightCm: 175, weightKg: 78,
-      bloodGroup: 'AB+',
+      age: 55, heightCm: 175, weightKg: 78, bloodGroup: 'AB+',
       allergies: 'Penicillin',
       currentMedications: 'Pyridostigmine 60mg TID, Mycophenolate 1000mg BID',
     },
     baseline: {
       primaryCondition: 'Myasthenia Gravis',
       conditionDurationMonths: 18,
-      painLevel: 2, fatigueLevel: 6, breathingDifficulty: 3, functionalLimitation: 5,
+      responses: { muscleWeakness: 6, fatigue: 6, swallowingDifficulty: 3, breathingDifficulty: 3 },
       sleepHours: 7, sleepQuality: 3, usualBedtime: '22:00', usualWakeTime: '06:00',
+    },
+    finalMetrics: buildMetrics([
+      { key: 'muscleWeakness', label: 'Muscle Weakness' },
+      { key: 'fatigue', label: 'Fatigue' },
+      { key: 'swallowingDifficulty', label: 'Swallowing Difficulty' },
+      { key: 'breathingDifficulty', label: 'Breathing Difficulty' },
+    ]),
+    transientMetric: {
+      def: { key: 'doubleVision', label: 'Double Vision', color: '#f97316', gradient: 'from-orange-400 to-amber-500' },
+      appearsAtDay: 14,
+      promoteAtDay: 17,
+      baselineValue: 0,
     },
     totalDays: 45,
     generateLogs: generateMG,
@@ -594,16 +645,27 @@ const USERS: UserSeed[] = [
     email: 'elena@hackrare.com',
     password: 'elena123',
     profile: {
-      age: 40, heightCm: 168, weightKg: 60,
-      bloodGroup: 'A-',
+      age: 40, heightCm: 168, weightKg: 60, bloodGroup: 'A-',
       allergies: 'Latex',
       currentMedications: 'Mycophenolate 500mg BID, Omeprazole 20mg daily',
     },
     baseline: {
       primaryCondition: 'Systemic Sclerosis (Scleroderma)',
       conditionDurationMonths: 30,
-      painLevel: 4, fatigueLevel: 5, breathingDifficulty: 4, functionalLimitation: 3,
+      responses: { skinTightness: 4, fingerPain: 5, fatigue: 5, breathingDifficulty: 4 },
       sleepHours: 6, sleepQuality: 3, usualBedtime: '23:30', usualWakeTime: '07:30',
+    },
+    finalMetrics: buildMetrics([
+      { key: 'skinTightness', label: 'Skin Tightness' },
+      { key: 'fingerPain', label: 'Finger Pain' },
+      { key: 'fatigue', label: 'Fatigue' },
+      { key: 'breathingDifficulty', label: 'Breathing Difficulty' },
+    ]),
+    transientMetric: {
+      def: { key: 'raynaudsSymptoms', label: 'Raynaud\'s Symptoms', color: '#06b6d4', gradient: 'from-cyan-400 to-teal-500' },
+      appearsAtDay: 10,
+      promoteAtDay: 13,
+      baselineValue: 0,
     },
     totalDays: 30,
     generateLogs: generateSSc,
@@ -621,6 +683,7 @@ async function seed() {
     if (existing) {
       await DailyLog.deleteMany({ userId: existing._id })
       await Baseline.deleteMany({ userId: existing._id })
+      await UserSchema.deleteMany({ userId: existing._id })
       await User.deleteOne({ _id: existing._id })
     }
   }
@@ -629,6 +692,7 @@ async function seed() {
   if (oldDemo) {
     await DailyLog.deleteMany({ userId: oldDemo._id })
     await Baseline.deleteMany({ userId: oldDemo._id })
+    await UserSchema.deleteMany({ userId: oldDemo._id })
     await User.deleteOne({ _id: oldDemo._id })
   }
   console.log('Cleaned up existing seed data\n')
@@ -643,56 +707,79 @@ async function seed() {
       profile: { ...u.profile, completedAt: new Date().toISOString() },
     })
 
+    const finalMetricKeys = u.finalMetrics.map((m) => m.key)
+
+    // Build form schema (with transient metric included after its promote day)
+    const allMetrics = [...u.finalMetrics]
+    if (u.transientMetric) {
+      allMetrics.push(u.transientMetric.def)
+    }
+    const formSchema = buildFormSchema(allMetrics)
+
+    // Create UserSchema
+    await UserSchema.create({
+      userId: user._id,
+      formSchema,
+      generatedAt: new Date(),
+      finalMetrics: finalMetricKeys,
+      transientMetrics: u.transientMetric ? [u.transientMetric.def.key] : [],
+      tombstoneMetrics: [],
+      transientCandidates: new Map(),
+      context: {
+        disease: u.baseline.primaryCondition,
+        notes: '',
+      },
+    })
+
     // Create baseline
     const baselineDateStr = dateStr(u.totalDays)
     await Baseline.create({
       userId: user._id,
-      ...u.baseline,
+      primaryCondition: u.baseline.primaryCondition,
+      conditionDurationMonths: u.baseline.conditionDurationMonths,
       baselineDate: baselineDateStr,
+      finalMetrics: finalMetricKeys,
+      sleepHours: u.baseline.sleepHours,
+      sleepQuality: u.baseline.sleepQuality,
+      usualBedtime: u.baseline.usualBedtime,
+      usualWakeTime: u.baseline.usualWakeTime,
+      responses: u.baseline.responses,
     })
 
-    // Generate and insert logs
-    const logDays = u.generateLogs(u.baseline)
-    const baselineSymptoms = {
-      painLevel: u.baseline.painLevel,
-      fatigueLevel: u.baseline.fatigueLevel,
-      breathingDifficulty: u.baseline.breathingDifficulty,
-      functionalLimitation: u.baseline.functionalLimitation,
-    }
+    // Generate logs
+    const logDays = u.generateLogs(u.baseline, finalMetricKeys, u.transientMetric)
 
     let logCount = 0
     for (let i = 0; i < logDays.length; i++) {
       const l = logDays[i]
       const logDateStr = dateStr(u.totalDays - i)
 
-      const logSymptoms = {
-        painLevel: l.pain,
-        fatigueLevel: l.fatigue,
-        breathingDifficulty: l.breath,
-        functionalLimitation: l.func,
-      }
+      // Determine which metrics are active at this point in time
+      const isTransientActive = u.transientMetric && i >= u.transientMetric.promoteAtDay
+      const currentTransient = isTransientActive ? [u.transientMetric!.def.key] : []
+      const activeMetrics = [...finalMetricKeys, ...currentTransient]
 
-      const { perMetric, total } = calculateDeviation(logSymptoms, baselineSymptoms)
+      const { perMetric, total } = calculateDeviation(l.responses, u.baseline.responses, activeMetrics)
       const redFlags = {
         chestPainWeaknessConfusion: !!l.flags.chest,
         feverSweatsChills: !!l.flags.fever,
         missedOrNewMedication: !!l.flags.meds,
       }
-      const flareRiskLevel = calculateFlareRisk(total, perMetric, redFlags)
+      const flareRiskLevel = calculateFlareRisk(total, perMetric, redFlags, activeMetrics.length)
 
       await DailyLog.create({
         userId: user._id,
         date: logDateStr,
-        painLevel: l.pain,
-        fatigueLevel: l.fatigue,
-        breathingDifficulty: l.breath,
-        functionalLimitation: l.func,
+        finalMetrics: finalMetricKeys,
+        transientMetrics: currentTransient,
+        tombstoneMetrics: [],
         redFlags,
         sleepHours: l.sleep,
         sleepQuality: l.quality,
         bedtime: l.bed,
         wakeTime: l.wake,
         notes: l.notes,
+        responses: l.responses,
         deviationScore: total,
         flareRiskLevel,
       })
@@ -702,6 +789,10 @@ async function seed() {
     console.log(`[${u.username}] ${u.baseline.primaryCondition}`)
     console.log(`  Login: ${u.email} / ${u.password}`)
     console.log(`  Baseline: ${baselineDateStr} (${u.baseline.conditionDurationMonths} months)`)
+    console.log(`  Metrics: ${finalMetricKeys.join(', ')}`)
+    if (u.transientMetric) {
+      console.log(`  Transient: ${u.transientMetric.def.key} (appears day ${u.transientMetric.appearsAtDay}, promoted day ${u.transientMetric.promoteAtDay})`)
+    }
     console.log(`  Logs: ${logCount} days`)
     console.log()
   }

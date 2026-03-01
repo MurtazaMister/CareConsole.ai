@@ -1,15 +1,14 @@
 import { useState } from 'react'
 import { useBaseline } from '../hooks/useBaseline'
 import { useLogs } from '../hooks/useLogs'
+import { useSchema } from '../hooks/useSchema'
 import { SLEEP_QUALITY_LABELS } from '../types/baseline'
 import {
-  calculateDeviation,
   getTodayDateString,
 } from '../types/dailyLog'
 import type { DailyLog } from '../types/dailyLog'
 import type { Tab } from './TabBar'
 import {
-  LOG_FORM_SCHEMA,
   createFormDefaults,
   loadFormFromLog,
   getFormValue,
@@ -21,7 +20,19 @@ import {
 } from '../constants/logFormSchema'
 import QuestionRenderer from './log/QuestionRenderer'
 
-const schema = LOG_FORM_SCHEMA
+/** Read a value from baseline, checking responses map first then legacy top-level field */
+function readBaselineVal(baseline: FormValues, key: string): unknown {
+  const responses = baseline.responses as Record<string, unknown> | undefined
+  if (responses && responses[key] !== undefined) return responses[key]
+  return baseline[key]
+}
+
+/** Read a value from a log entry, checking responses map first then legacy top-level field */
+function readLogVal(log: FormValues, key: string): unknown {
+  const responses = log.responses as Record<string, unknown> | undefined
+  if (responses && responses[key] !== undefined) return responses[key]
+  return log[key]
+}
 
 // Steps = schema pages + review page at the end
 const REVIEW_STEP = { title: 'Review & Save', subtitle: 'Check your entry before saving' }
@@ -33,6 +44,7 @@ interface LogTabProps {
 export default function LogTab({ onSwitchTab }: LogTabProps) {
   const { baseline } = useBaseline()
   const { addLog, getLogByDate } = useLogs()
+  const { schema, loading: schemaLoading } = useSchema()
 
   const today = getTodayDateString()
   const [selectedDate, setSelectedDate] = useState(today)
@@ -41,6 +53,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   const [step, setStep] = useState(0)
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<FormValues>(() => {
+    if (!schema) return {}
     if (existingLog) return loadFormFromLog(existingLog, schema)
     return createFormDefaults(schema, baseline ?? undefined)
   })
@@ -49,6 +62,13 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   const [formDate, setFormDate] = useState(selectedDate)
 
   if (!baseline) return null
+  if (!schema || schemaLoading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-text-muted text-sm">
+        Loading questions...
+      </div>
+    )
+  }
 
   const minDate = baseline.baselineDate ?? ''
   const isToday = selectedDate === today
@@ -82,12 +102,26 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   const handleSubmit = async () => {
     if (saving) return
     setSaving(true)
-    const { total } = calculateDeviation(form as DailyLog, baseline)
+
+    // Build responses map from all form values for dynamic storage
+    const responses: Record<string, unknown> = {}
+    for (const page of schema.pages) {
+      for (const q of page.questions) {
+        const val = getFormValue(form, q)
+        if (q.type === 'toggle' && q.group) {
+          if (!responses[q.group]) responses[q.group] = {}
+          ;(responses[q.group] as Record<string, unknown>)[q.id] = val
+        } else {
+          responses[q.id] = val
+        }
+      }
+    }
 
     const log: DailyLog = {
       ...(form as DailyLog),
       date: selectedDate,
-      deviationScore: total,
+      responses,
+      deviationScore: 0, // computed server-side
       createdAt: existingLog?.createdAt ?? new Date().toISOString(),
     }
 
@@ -121,7 +155,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   for (const q of sliderQs) {
     if (q.baselineKey) {
       const val = form[q.id] as number
-      const base = (baseline as FormValues)[q.baselineKey] as number
+      const base = readBaselineVal(baseline as FormValues, q.baselineKey) as number
       const diff = val - base
       liveDeviation[q.id] = diff
       liveTotal += Math.abs(diff)
@@ -152,8 +186,8 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
             <div className="bg-surface rounded-xl p-4 mb-4">
               <div className="grid grid-cols-4 gap-3 mb-3">
                 {sliderQs.map((q) => {
-                  const val = (todayLog as FormValues)[q.id] as number
-                  const base = q.baselineKey ? (baseline as FormValues)[q.baselineKey] as number : 0
+                  const val = readLogVal(todayLog as FormValues, q.id) as number
+                  const base = q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) as number : 0
                   const diff = val - base
                   return (
                     <div key={q.id} className="text-center">
@@ -238,7 +272,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
                 question={q}
                 value={getFormValue(form, q)}
                 onChange={(v) => setForm((prev) => setFormValue(prev, q, v))}
-                baselineValue={q.baselineKey ? (baseline as FormValues)[q.baselineKey] : undefined}
+                baselineValue={q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) : undefined}
               />
             ))}
           </div>
@@ -255,7 +289,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
             question={q}
             value={getFormValue(form, q)}
             onChange={(v) => setForm((prev) => setFormValue(prev, q, v))}
-            baselineValue={q.baselineKey ? (baseline as FormValues)[q.baselineKey] : undefined}
+            baselineValue={q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) : undefined}
           />
         ))}
       </div>
@@ -284,7 +318,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
         <h3 className="font-semibold text-text mb-3 text-sm">Symptoms vs Baseline</h3>
         {sliderQs.map((q) => {
           const val = form[q.id] as number
-          const base = q.baselineKey ? (baseline as FormValues)[q.baselineKey] as number : 0
+          const base = q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) as number : 0
           const diff = liveDeviation[q.id] ?? 0
           return (
             <div key={q.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">

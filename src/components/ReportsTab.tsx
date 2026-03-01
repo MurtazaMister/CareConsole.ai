@@ -3,7 +3,7 @@ import type { Tab } from './TabBar'
 import type { AIReportRequest } from '../types/aiReport'
 import { useFlareEngine } from '../hooks/useFlareEngine'
 import { useAIReport } from '../hooks/useAIReport'
-import { SYMPTOM_METRICS } from '../types/baseline'
+import { useSchema } from '../hooks/useSchema'
 import ReportSection from './reports/ReportSection'
 import { downloadReportPdf } from '../lib/generateReportPdf'
 
@@ -13,6 +13,7 @@ interface ReportsTabProps {
 
 export default function ReportsTab({ onSwitchTab }: ReportsTabProps) {
   const flareResult = useFlareEngine()
+  const { activeMetrics } = useSchema()
   const { state, generateReport, reset } = useAIReport()
   const [copyAllFeedback, setCopyAllFeedback] = useState(false)
 
@@ -20,7 +21,7 @@ export default function ReportsTab({ onSwitchTab }: ReportsTabProps) {
     if (!flareResult) return
 
     const symLabel = (key: string) =>
-      SYMPTOM_METRICS.find((m) => m.key === key)?.label ?? key
+      activeMetrics.find((m) => m.key === key)?.label ?? key
 
     const payload: AIReportRequest = {
       flareSummary: {

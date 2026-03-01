@@ -1,11 +1,12 @@
-import { SYMPTOM_METRICS } from '../../types/baseline'
+import type { MetricDefinition } from '../../types/schema'
 
 interface MetricToggleProps {
   active: Set<string>
   onChange: (active: Set<string>) => void
+  metrics: MetricDefinition[]
 }
 
-export default function MetricToggle({ active, onChange }: MetricToggleProps) {
+export default function MetricToggle({ active, onChange, metrics }: MetricToggleProps) {
   const toggle = (key: string) => {
     const next = new Set(active)
     if (next.has(key)) {
@@ -19,7 +20,7 @@ export default function MetricToggle({ active, onChange }: MetricToggleProps) {
 
   return (
     <div className="flex flex-wrap gap-1.5">
-      {SYMPTOM_METRICS.map((metric) => {
+      {metrics.map((metric) => {
         const isActive = active.has(metric.key)
         return (
           <button

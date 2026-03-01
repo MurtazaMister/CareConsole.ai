@@ -9,16 +9,17 @@ import {
   ResponsiveContainer,
   ReferenceArea,
 } from 'recharts'
-import { SYMPTOM_METRICS } from '../../types/baseline'
 import { CHART_AXIS_STYLE, CHART_GRID_STYLE, CHART_TOOLTIP_STYLE } from '../../constants/chartTheme'
 import { FLARE_WINDOW_CHART_COLORS } from '../../constants/flareTheme'
 import type { DailyLog } from '../../types/dailyLog'
 import type { FlareWindow } from '../../lib/flareEngine'
+import type { MetricDefinition } from '../../types/schema'
 
 interface SymptomTrendChartProps {
   logs: DailyLog[]
   activeMetrics: Set<string>
   flareWindows?: FlareWindow[]
+  metrics: MetricDefinition[]
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -28,16 +29,16 @@ function formatDateLabel(dateStr: string): string {
   })
 }
 
-export default function SymptomTrendChart({ logs, activeMetrics, flareWindows }: SymptomTrendChartProps) {
+export default function SymptomTrendChart({ logs, activeMetrics, flareWindows, metrics }: SymptomTrendChartProps) {
   const data = useMemo(
     () =>
       logs.map((log) => ({
         date: formatDateLabel(log.date),
         ...Object.fromEntries(
-          SYMPTOM_METRICS.map((m) => [m.key, log[m.key]]),
+          metrics.map((m) => [m.key, log.responses?.[m.key] ?? (log as Record<string, unknown>)[m.key] ?? 0]),
         ),
       })),
-    [logs],
+    [logs, metrics],
   )
 
   // Map flare window dates to chart date labels
@@ -84,7 +85,7 @@ export default function SymptomTrendChart({ logs, activeMetrics, flareWindows }:
             ifOverflow="extendDomain"
           />
         ))}
-        {SYMPTOM_METRICS.filter((m) => activeMetrics.has(m.key)).map((metric) => (
+        {metrics.filter((m) => activeMetrics.has(m.key)).map((metric) => (
           <Line
             key={metric.key}
             type="monotone"

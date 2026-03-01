@@ -1,4 +1,4 @@
-import { SYMPTOM_METRICS } from '../types/baseline'
+import type { MetricDefinition } from '../types/schema'
 
 // ── Date Range ───────────────────────────────────────────
 
@@ -25,11 +25,11 @@ export const CUSTOM_UNITS: { key: CustomUnit; label: string; multiplier: number 
   { key: 'Y', label: 'Y', multiplier: 365 },
 ]
 
-// ── Metric Colors (from SYMPTOM_METRICS) ─────────────────
+// ── Metric Colors (dynamic) ─────────────────────────────
 
-export const METRIC_COLORS: Record<string, string> = Object.fromEntries(
-  SYMPTOM_METRICS.map((m) => [m.key, m.color]),
-)
+export function buildMetricColors(metrics: MetricDefinition[]): Record<string, string> {
+  return Object.fromEntries(metrics.map((m) => [m.key, m.color]))
+}
 
 // ── Shared Chart Styling ─────────────────────────────────
 

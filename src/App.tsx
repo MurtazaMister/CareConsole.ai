@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthProvider'
 import { BaselineProvider } from './context/BaselineProvider'
+import { SchemaProvider } from './context/SchemaProvider'
 import { LogsProvider } from './context/LogsProvider'
 import RequireAuth from './components/RequireAuth'
 import Auth from './pages/Auth'
@@ -12,6 +13,7 @@ function App() {
   return (
     <AuthProvider>
       <BaselineProvider>
+        <SchemaProvider>
         <LogsProvider>
           <BrowserRouter>
             <Routes>
@@ -23,6 +25,7 @@ function App() {
             </Routes>
           </BrowserRouter>
         </LogsProvider>
+        </SchemaProvider>
       </BaselineProvider>
     </AuthProvider>
   )

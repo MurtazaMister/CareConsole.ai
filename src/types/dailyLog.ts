@@ -1,15 +1,12 @@
-import type { BaselineProfile } from './baseline'
-
 // ── Daily Log Entry ───────────────────────────────────────
 
 export interface DailyLog {
   date: string // YYYY-MM-DD
 
-  // Core symptoms (NRS 0–10, same as baseline)
-  painLevel: number
-  fatigueLevel: number
-  breathingDifficulty: number
-  functionalLimitation: number
+  // Metric category snapshots (from UserSchema at time of logging)
+  finalMetrics?: string[]
+  transientMetrics?: string[]
+  tombstoneMetrics?: string[]
 
   // Health check-in (binary)
   redFlags: {
@@ -26,6 +23,9 @@ export interface DailyLog {
 
   // Free text
   notes: string
+
+  // Dynamic schema responses (key-value store for all metric values)
+  responses?: Record<string, unknown>
 
   // Computed on save
   deviationScore: number
@@ -50,27 +50,6 @@ export const HEALTH_CHECKS = [
   },
 ]
 
-// ── Deviation logic ──────────────────────────────────────
-
-const CORE_KEYS = [
-  'painLevel',
-  'fatigueLevel',
-  'breathingDifficulty',
-  'functionalLimitation',
-] as const
-
-export function calculateDeviation(
-  log: Pick<DailyLog, 'painLevel' | 'fatigueLevel' | 'breathingDifficulty' | 'functionalLimitation'>,
-  baseline: BaselineProfile,
-): { perMetric: Record<string, number>; total: number } {
-  const perMetric: Record<string, number> = {}
-  for (const key of CORE_KEYS) {
-    perMetric[key] = log[key] - baseline[key]
-  }
-  const total = Object.values(perMetric).reduce((sum, v) => sum + Math.abs(v), 0)
-  return { perMetric, total }
-}
-
 // ── Helpers ───────────────────────────────────────────────
 
 export function formatDateString(date: Date): string {
@@ -81,21 +60,17 @@ export function getTodayDateString(): string {
   return formatDateString(new Date())
 }
 
-export function createEmptyLogForm(baseline?: BaselineProfile) {
+export function createEmptyLogForm() {
   return {
-    painLevel: baseline?.painLevel ?? 0,
-    fatigueLevel: baseline?.fatigueLevel ?? 0,
-    breathingDifficulty: baseline?.breathingDifficulty ?? 0,
-    functionalLimitation: baseline?.functionalLimitation ?? 0,
     redFlags: {
       chestPainWeaknessConfusion: false,
       feverSweatsChills: false,
       missedOrNewMedication: false,
     },
-    sleepHours: baseline?.sleepHours ?? 7,
-    sleepQuality: baseline?.sleepQuality ?? 3,
-    bedtime: baseline?.usualBedtime ?? '22:00',
-    wakeTime: baseline?.usualWakeTime ?? '06:00',
+    sleepHours: 7,
+    sleepQuality: 3,
+    bedtime: '22:00',
+    wakeTime: '06:00',
     notes: '',
   }
 }

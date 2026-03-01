@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
-import { SYMPTOM_METRICS } from '../../types/baseline'
 import { FLARE_LEVEL_CONFIG } from '../../constants/flareTheme'
-import type { FlareWindow, DayAnalysis, SymptomKey } from '../../lib/flareEngine'
+import type { FlareWindow, DayAnalysis } from '../../lib/flareEngine'
 import type { FlareExplanationState } from '../../types/flareExplanation'
+import type { MetricDefinition } from '../../types/schema'
 import AISparkleLoader from './AISparkleLoader'
 
 interface FlareEventCardProps {
@@ -12,11 +12,8 @@ interface FlareEventCardProps {
   onToggle: () => void
   explanationState: FlareExplanationState
   onRequestExplanation: () => void
+  metrics: MetricDefinition[]
 }
-
-const SYMPTOM_COLOR_MAP = Object.fromEntries(
-  SYMPTOM_METRICS.map((m) => [m.key, m.color]),
-) as Record<SymptomKey, string>
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
@@ -32,9 +29,13 @@ export default function FlareEventCard({
   onToggle,
   explanationState,
   onRequestExplanation,
+  metrics,
 }: FlareEventCardProps) {
   const peakConfig = FLARE_LEVEL_CONFIG[fw.peakLevel]
   const peakDay = dailyAnalysis.find((d) => d.date === fw.peakDate)
+
+  // Build color map from dynamic metrics
+  const colorMap = Object.fromEntries(metrics.map((m) => [m.key, m.color]))
 
   // Get the dominant and secondary contributors from the peak day
   const topContributors = peakDay?.contributingSymptoms.slice(0, 2) ?? []
@@ -148,7 +149,7 @@ export default function FlareEventCard({
                         className="h-full rounded-full transition-all duration-500"
                         style={{
                           width: `${pct}%`,
-                          backgroundColor: SYMPTOM_COLOR_MAP[cs.key],
+                          backgroundColor: colorMap[cs.key] ?? '#6366f1',
                         }}
                       />
                     </div>

@@ -3,7 +3,7 @@ import type { Tab } from './TabBar'
 import { useFlareEngine } from '../hooks/useFlareEngine'
 import { useFilteredLogs } from '../hooks/useFilteredLogs'
 import { useFlareExplanation } from '../hooks/useFlareExplanation'
-import { SYMPTOM_METRICS } from '../types/baseline'
+import { useSchema } from '../hooks/useSchema'
 import type { DateRange } from '../constants/chartTheme'
 import type { FlareWindow, DayAnalysis } from '../lib/flareEngine'
 import FlareStatusBanner from './insights/FlareStatusBanner'
@@ -22,9 +22,10 @@ interface InsightsTabProps {
 
 export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
   const flareResult = useFlareEngine()
+  const { activeMetrics } = useSchema()
   const [range, setRange] = useState<DateRange>({ preset: '1y', days: 365 })
-  const [activeMetrics, setActiveMetrics] = useState<Set<string>>(
-    new Set(SYMPTOM_METRICS.map((m) => m.key)),
+  const [activeKeys, setActiveKeys] = useState<Set<string>>(
+    new Set(activeMetrics.map((m) => m.key)),
   )
   const [selectedWindowId, setSelectedWindowId] = useState<string | null>(null)
   const { getState, fetchExplanation } = useFlareExplanation()
@@ -53,6 +54,11 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
     )
   }
 
+  // Build weight description from dynamic metrics
+  const weightDesc = activeMetrics
+    .map((m) => `${m.label} ${Math.round(m.weight * 100)}%`)
+    .join(', ')
+
   // Filter daily analysis to match the selected date range
   const filteredDates = new Set(filteredLogs.map((l) => l.date))
   const filteredAnalysis = flareResult.dailyAnalysis.filter((d) =>
@@ -73,7 +79,7 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
 
   return (
     <div className="space-y-4">
-      {/* Methodology — up top so doctors/researchers understand the approach first */}
+      {/* Methodology */}
       <ChartSection title="How does flare detection work?" defaultOpen={false}>
         <div className="text-sm text-text-muted space-y-4">
           <p>We compare your daily symptoms against your personal baseline to detect when things are getting worse — and whether it's a one-off bad day or a real flare.</p>
@@ -86,7 +92,7 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
               <span className="font-medium text-text">Smooth out noise</span> — A single bad day doesn't mean a flare. We use exponential smoothing (EWMA) so only sustained worsening builds up the signal.
             </li>
             <li>
-              <span className="font-medium text-text">Combine into one score</span> — All 4 symptoms are weighted together (Pain 30%, Fatigue 25%, Breathing 25%, Function 20%) into a single composite flare score.
+              <span className="font-medium text-text">Combine into one score</span> — All {activeMetrics.length} symptoms are weighted together ({weightDesc}) into a single composite flare score.
             </li>
             <li>
               <span className="font-medium text-text">Require consistency</span> — A flare is only flagged when the score stays elevated for 2+ consecutive days, filtering out random spikes.
@@ -109,6 +115,7 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
       <FlareSummaryCards
         summary={flareResult.summary}
         totalDays={flareResult.dailyAnalysis.length}
+        metrics={activeMetrics}
       />
 
       {/* Date Range Selector */}
@@ -118,7 +125,7 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
       </div>
 
       {/* Composite Flare Score */}
-      <ChartSection title="Composite Flare Score" info="A single score combining all 4 symptoms, weighted by clinical importance. Dashed lines mark Watch, Mild, and Severe thresholds. Shaded areas are detected flare windows.">
+      <ChartSection title="Composite Flare Score" info="A single score combining all symptoms, weighted by clinical importance. Dashed lines mark Watch, Mild, and Severe thresholds. Shaded areas are detected flare windows.">
         <CompositeScoreChart
           dailyAnalysis={filteredAnalysis}
           flareWindows={filteredWindows}
@@ -128,11 +135,12 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
       {/* Symptom Signals (EWMA) */}
       <ChartSection title="Symptom Signals (EWMA)" info="Smoothed trend for each symptom. EWMA filters out one-off spikes so you only see sustained changes. Higher values mean that symptom has been consistently above baseline.">
         <div className="mb-3">
-          <MetricToggle active={activeMetrics} onChange={setActiveMetrics} />
+          <MetricToggle active={activeKeys} onChange={setActiveKeys} metrics={activeMetrics} />
         </div>
         <SymptomEWMAChart
           dailyAnalysis={filteredAnalysis}
-          activeMetrics={activeMetrics}
+          activeMetrics={activeKeys}
+          metrics={activeMetrics}
         />
       </ChartSection>
 
@@ -179,6 +187,7 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
                     dailyAnalysis: windowAnalysis,
                   })
                 }
+                metrics={activeMetrics}
               />
             )
           })}

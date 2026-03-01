@@ -78,65 +78,12 @@ export interface LogFormSchema {
 
 export const LOG_FORM_SCHEMA: LogFormSchema = {
   pages: [
-    // ── Page 1: Core Symptoms ──────────────────────────────
+    // ── Page 1: Symptoms (empty fallback — populated by AI schema) ──
     {
       id: 'symptoms',
-      title: 'Rate your core symptoms',
+      title: 'Rate your symptoms',
       subtitle: 'Takes 30 seconds',
-      questions: [
-        {
-          id: 'painLevel',
-          type: 'slider',
-          label: 'Body Pain',
-          question: 'What is your overall body pain TODAY?',
-          required: true,
-          min: 0,
-          max: 10,
-          color: '#ef4444',
-          gradient: 'from-red-400 to-rose-500',
-          baselineKey: 'painLevel',
-          defaultValue: 0,
-        },
-        {
-          id: 'fatigueLevel',
-          type: 'slider',
-          label: 'Fatigue',
-          question: 'How fatigued or weak do you feel TODAY?',
-          required: true,
-          min: 0,
-          max: 10,
-          color: '#f59e0b',
-          gradient: 'from-amber-400 to-orange-500',
-          baselineKey: 'fatigueLevel',
-          defaultValue: 0,
-        },
-        {
-          id: 'breathingDifficulty',
-          type: 'slider',
-          label: 'Breathing',
-          question: 'How much difficulty are you having breathing TODAY?',
-          required: true,
-          min: 0,
-          max: 10,
-          color: '#06b6d4',
-          gradient: 'from-cyan-400 to-teal-500',
-          baselineKey: 'breathingDifficulty',
-          defaultValue: 0,
-        },
-        {
-          id: 'functionalLimitation',
-          type: 'slider',
-          label: 'Task Limitation',
-          question: 'How much are your symptoms preventing you from doing normal tasks TODAY?',
-          required: true,
-          min: 0,
-          max: 10,
-          color: '#6366f1',
-          gradient: 'from-indigo-400 to-blue-500',
-          baselineKey: 'functionalLimitation',
-          defaultValue: 0,
-        },
-      ],
+      questions: [],
     },
 
     // ── Page 2: Health Check-in ─────────────────────────────
@@ -263,10 +210,14 @@ export function createFormDefaults(
   baseline?: FormValues,
 ): FormValues {
   const form: FormValues = { notes: '' }
+  const baseResponses = baseline?.responses as Record<string, unknown> | undefined
 
   for (const page of schema.pages) {
     for (const q of page.questions) {
-      const baseVal = q.baselineKey && baseline ? baseline[q.baselineKey] : undefined
+      // Try reading from baseline.responses first (dynamic), then legacy field
+      const baseVal = q.baselineKey && baseline
+        ? (baseResponses?.[q.baselineKey] ?? baseline[q.baselineKey])
+        : undefined
       const fallback = q.defaultValue
 
       let val: unknown
@@ -303,21 +254,23 @@ export function createFormDefaults(
   return form
 }
 
-/** Load form values from an existing log entry */
+/** Load form values from an existing log entry (reads from responses map with legacy fallback) */
 export function loadFormFromLog(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   log: Record<string, any>,
   schema: LogFormSchema,
 ): FormValues {
   const form: FormValues = { notes: log.notes ?? '' }
+  const responses = log.responses ?? {}
 
   for (const page of schema.pages) {
     for (const q of page.questions) {
       if (q.type === 'toggle' && q.group) {
         if (!form[q.group]) form[q.group] = {}
-        form[q.group][q.id] = log[q.group]?.[q.id] ?? false
+        const groupResponses = responses[q.group] as Record<string, unknown> | undefined
+        form[q.group][q.id] = groupResponses?.[q.id] ?? log[q.group]?.[q.id] ?? false
       } else {
-        form[q.id] = log[q.id]
+        form[q.id] = responses[q.id] ?? log[q.id]
       }
     }
   }

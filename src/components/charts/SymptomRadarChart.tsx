@@ -7,21 +7,30 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
-import { SYMPTOM_METRICS } from '../../types/baseline'
 import type { BaselineProfile } from '../../types/baseline'
 import type { DailyLog } from '../../types/dailyLog'
+import type { MetricDefinition } from '../../types/schema'
 
 interface SymptomRadarChartProps {
   baseline: BaselineProfile
   todayLog?: DailyLog
+  metrics: MetricDefinition[]
 }
 
-export default function SymptomRadarChart({ baseline, todayLog }: SymptomRadarChartProps) {
-  const data = SYMPTOM_METRICS.map((m) => ({
-    metric: m.label,
-    Baseline: baseline[m.key],
-    Today: todayLog?.[m.key] ?? 0,
-  }))
+export default function SymptomRadarChart({ baseline, todayLog, metrics }: SymptomRadarChartProps) {
+  const data = metrics.map((m) => {
+    const baselineVal = baseline.responses?.[m.baselineKey ?? m.key]
+      ?? (baseline as Record<string, unknown>)[m.baselineKey ?? m.key]
+      ?? 0
+    const todayVal = todayLog
+      ? (todayLog.responses?.[m.key] ?? (todayLog as Record<string, unknown>)[m.key] ?? 0)
+      : 0
+    return {
+      metric: m.label,
+      Baseline: baselineVal as number,
+      Today: todayVal as number,
+    }
+  })
 
   return (
     <div className="relative">

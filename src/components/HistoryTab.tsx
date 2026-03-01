@@ -1,7 +1,8 @@
 import { Fragment, useState } from 'react'
 import { useBaseline } from '../hooks/useBaseline'
 import { useLogs } from '../hooks/useLogs'
-import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
+import { useSchema } from '../hooks/useSchema'
+import { SLEEP_QUALITY_LABELS } from '../types/baseline'
 import { HEALTH_CHECKS } from '../types/dailyLog'
 import type { DailyLog } from '../types/dailyLog'
 import type { Tab } from './TabBar'
@@ -14,6 +15,7 @@ interface HistoryTabProps {
 export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
   const { baseline } = useBaseline()
   const { logs } = useLogs()
+  const { activeMetrics } = useSchema()
   const [expandedDate, setExpandedDate] = useState<string | null>(null)
 
   if (!baseline) return null
@@ -24,18 +26,35 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
     setExpandedDate((prev) => (prev === date ? null : date))
   }
 
+  /** Read a metric value from a log, checking responses first then legacy field */
+  const readVal = (log: DailyLog, key: string): number => {
+    const fromResponses = log.responses?.[key]
+    if (typeof fromResponses === 'number') return fromResponses
+    const legacy = (log as Record<string, unknown>)[key]
+    return typeof legacy === 'number' ? legacy : 0
+  }
+
+  /** Read a baseline value */
+  const readBase = (key: string | undefined): number => {
+    if (!key) return 0
+    const fromResponses = baseline.responses?.[key]
+    if (typeof fromResponses === 'number') return fromResponses
+    const legacy = (baseline as Record<string, unknown>)[key]
+    return typeof legacy === 'number' ? legacy : 0
+  }
+
   const renderLogDetail = (log: DailyLog) => {
     const checkedItems = log.redFlags ? Object.values(log.redFlags).filter(Boolean).length : 0
 
     return (
       <tr>
-        <td colSpan={7} className="px-4 py-4 bg-surface/50">
+        <td colSpan={activeMetrics.length + 3} className="px-4 py-4 bg-surface/50">
           <div className="space-y-4">
             {/* Symptom detail grid */}
-            <div className="grid grid-cols-4 gap-2">
-              {SYMPTOM_METRICS.map((metric) => {
-                const base = baseline[metric.key]
-                const today = log[metric.key]
+            <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${Math.min(activeMetrics.length, 4)}, 1fr)` }}>
+              {activeMetrics.map((metric) => {
+                const base = readBase(metric.baselineKey ?? metric.key)
+                const today = readVal(log, metric.key)
                 const diff = today - base
                 return (
                   <div key={metric.key} className="text-center p-2 rounded-lg bg-white border border-border">
@@ -56,11 +75,11 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="bg-white rounded-lg border border-border p-3">
                 <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Sleep</p>
-                <p className="font-bold text-text">{log.sleepHours}h &middot; {SLEEP_QUALITY_LABELS[log.sleepQuality]}</p>
+                <p className="font-bold text-text">{(log.responses?.sleepHours ?? log.sleepHours) as number}h &middot; {SLEEP_QUALITY_LABELS[(log.responses?.sleepQuality ?? log.sleepQuality) as number]}</p>
               </div>
               <div className="bg-white rounded-lg border border-border p-3">
                 <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Bed / Wake</p>
-                <p className="font-bold text-text font-mono text-xs">{log.bedtime} – {log.wakeTime}</p>
+                <p className="font-bold text-text font-mono text-xs">{(log.responses?.bedtime ?? log.bedtime) as string} {'\u2013'} {(log.responses?.wakeTime ?? log.wakeTime) as string}</p>
               </div>
             </div>
 
@@ -117,7 +136,7 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
             <thead>
               <tr className="border-b border-border bg-surface/50">
                 <th className="text-left px-4 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">Date</th>
-                {SYMPTOM_METRICS.map((m) => (
+                {activeMetrics.map((m) => (
                   <th key={m.key} className="text-center px-2 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">{m.label}</th>
                 ))}
                 <th className="text-center px-2 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">Sleep</th>
@@ -145,9 +164,10 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
                         <p className="text-sm font-medium text-text">{dateStr}</p>
                         <p className="text-[10px] text-text-muted">{weekday}</p>
                       </td>
-                      {SYMPTOM_METRICS.map((metric) => {
-                        const val = log[metric.key]
-                        const diff = val - baseline[metric.key]
+                      {activeMetrics.map((metric) => {
+                        const val = readVal(log, metric.key)
+                        const base = readBase(metric.baselineKey ?? metric.key)
+                        const diff = val - base
                         return (
                           <td key={metric.key} className="text-center px-2 py-3">
                             <span className="text-sm font-bold text-slate-600">{val}</span>
@@ -160,7 +180,7 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
                         )
                       })}
                       <td className="text-center px-2 py-3">
-                        <span className="text-sm text-text">{log.sleepHours}h</span>
+                        <span className="text-sm text-text">{(log.responses?.sleepHours ?? log.sleepHours) as number}h</span>
                       </td>
                       <td className="text-center px-4 py-3">
                         <span className="text-sm font-bold text-slate-600">{log.deviationScore}</span>

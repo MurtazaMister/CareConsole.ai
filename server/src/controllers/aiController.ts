@@ -4,8 +4,58 @@ import { env } from '../config/env'
 import Baseline from '../models/Baseline'
 import DailyLog from '../models/DailyLog'
 import User from '../models/User'
+import UserSchema from '../models/UserSchema'
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY })
+
+interface SchemaMetric {
+  id: string
+  label: string
+  baselineKey?: string
+}
+
+/** Capitalize a camelCase key into a human-readable label */
+function keyToLabel(key: string): string {
+  return key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())
+}
+
+/** Extract slider metrics from the user's schema, or derive from finalMetrics */
+async function getMetricsForUser(userId: string): Promise<SchemaMetric[]> {
+  const userSchema = await UserSchema.findOne({ userId })
+  if (userSchema?.formSchema) {
+    const schema = userSchema.formSchema as { pages?: { questions?: { type: string; id: string; label: string; baselineKey?: string }[] }[] }
+    if (schema.pages) {
+      const sliders = schema.pages
+        .flatMap((p) => p.questions ?? [])
+        .filter((q) => q.type === 'slider')
+      if (sliders.length > 0) {
+        return sliders.map((q) => ({ id: q.id, label: q.label, baselineKey: q.baselineKey }))
+      }
+    }
+  }
+  // Fallback: derive from finalMetrics + transientMetrics on UserSchema
+  if (userSchema) {
+    const allMetrics = [...(userSchema.finalMetrics || []), ...(userSchema.transientMetrics || [])]
+    if (allMetrics.length > 0) {
+      return allMetrics.map((id) => ({ id, label: keyToLabel(id), baselineKey: id }))
+    }
+  }
+  // No schema at all — return empty (user hasn't completed onboarding)
+  return []
+}
+
+/** Read a value from a document, checking responses map first then legacy field */
+function readValue(doc: Record<string, unknown>, key: string): unknown {
+  const responses = doc.responses as Map<string, unknown> | Record<string, unknown> | undefined
+  if (responses) {
+    // Mongoose Map has .get(), plain objects use bracket access
+    const val = typeof (responses as Map<string, unknown>).get === 'function'
+      ? (responses as Map<string, unknown>).get(key)
+      : (responses as Record<string, unknown>)[key]
+    if (val !== undefined) return val
+  }
+  return doc[key]
+}
 
 const SYSTEM_PROMPT = `You are a medical AI assistant helping patients with chronic and rare conditions communicate with their healthcare providers. You analyze self-reported symptom tracking data and produce structured health reports.
 
@@ -56,11 +106,12 @@ Important rules:
 
 function buildUserMessage(
   user: { profile: { age: number; bloodGroup: string; allergies: string; currentMedications: string } | null },
-  baseline: { primaryCondition: string; conditionDurationMonths: number; baselineDate: string; painLevel: number; fatigueLevel: number; breathingDifficulty: number; functionalLimitation: number; sleepHours: number; sleepQuality: number; usualBedtime: string; usualWakeTime: string },
-  logs: { date: string; painLevel: number; fatigueLevel: number; breathingDifficulty: number; functionalLimitation: number; redFlags: { chestPainWeaknessConfusion: boolean; feverSweatsChills: boolean; missedOrNewMedication: boolean }; sleepHours: number; sleepQuality: number; notes: string }[],
+  baseline: Record<string, unknown>,
+  logs: Record<string, unknown>[],
   flareSummary: Record<string, unknown>,
   recentFlareWindows: Record<string, unknown>[],
   recentDailyAnalysis: Record<string, unknown>[],
+  metrics: SchemaMetric[],
 ): string {
   const profile = user.profile
   const lines: string[] = []
@@ -79,26 +130,37 @@ function buildUserMessage(
   lines.push(`- Condition Duration: ${baseline.conditionDurationMonths} months`)
   lines.push('')
 
-  // Baseline metrics
+  // Baseline metrics — dynamic
   lines.push('## Baseline Health Metrics (established ' + baseline.baselineDate + ')')
-  lines.push(`- Pain Level: ${baseline.painLevel}/10`)
-  lines.push(`- Fatigue Level: ${baseline.fatigueLevel}/10`)
-  lines.push(`- Breathing Difficulty: ${baseline.breathingDifficulty}/10`)
-  lines.push(`- Functional Limitation: ${baseline.functionalLimitation}/10`)
-  lines.push(`- Usual Sleep: ${baseline.sleepHours} hours, Quality: ${baseline.sleepQuality}/5`)
-  lines.push(`- Usual Schedule: Bed ${baseline.usualBedtime}, Wake ${baseline.usualWakeTime}`)
+  for (const m of metrics) {
+    const val = readValue(baseline, m.baselineKey ?? m.id)
+    lines.push(`- ${m.label}: ${val}/10`)
+  }
+  const sleepHours = readValue(baseline, 'sleepHours')
+  const sleepQuality = readValue(baseline, 'sleepQuality')
+  lines.push(`- Usual Sleep: ${sleepHours} hours, Quality: ${sleepQuality}/5`)
+  const bedtime = readValue(baseline, 'usualBedtime')
+  const wakeTime = readValue(baseline, 'usualWakeTime')
+  lines.push(`- Usual Schedule: Bed ${bedtime}, Wake ${wakeTime}`)
   lines.push('')
 
-  // Recent daily logs
+  // Recent daily logs — dynamic
   lines.push(`## Recent Daily Logs (${logs.length} days)`)
-  const sortedLogs = [...logs].sort((a, b) => a.date.localeCompare(b.date))
+  const sortedLogs = [...logs].sort((a, b) => (a.date as string).localeCompare(b.date as string))
   for (const log of sortedLogs) {
+    const symptomStr = metrics
+      .map((m) => `${m.label} ${readValue(log, m.id)}`)
+      .join(', ')
+    const redFlags = log.redFlags as Record<string, boolean> | undefined
     const flags: string[] = []
-    if (log.redFlags.chestPainWeaknessConfusion) flags.push('Chest pain/weakness/confusion')
-    if (log.redFlags.feverSweatsChills) flags.push('Fever/sweats/chills')
-    if (log.redFlags.missedOrNewMedication) flags.push('Missed/new medication')
+    if (redFlags?.chestPainWeaknessConfusion) flags.push('Chest pain/weakness/confusion')
+    if (redFlags?.feverSweatsChills) flags.push('Fever/sweats/chills')
+    if (redFlags?.missedOrNewMedication) flags.push('Missed/new medication')
     const flagStr = flags.length > 0 ? flags.join(', ') : 'None'
-    lines.push(`- ${log.date}: Pain ${log.painLevel}, Fatigue ${log.fatigueLevel}, Breathing ${log.breathingDifficulty}, Function ${log.functionalLimitation} | Sleep: ${log.sleepHours}h (Quality: ${log.sleepQuality}/5) | Health Check-ins: ${flagStr}${log.notes ? ` | Notes: ${log.notes}` : ''}`)
+    const logSleep = readValue(log, 'sleepHours')
+    const logQuality = readValue(log, 'sleepQuality')
+    const notes = log.notes as string | undefined
+    lines.push(`- ${log.date}: ${symptomStr} | Sleep: ${logSleep}h (Quality: ${logQuality}/5) | Health Check-ins: ${flagStr}${notes ? ` | Notes: ${notes}` : ''}`)
   }
   lines.push('')
 
@@ -187,13 +249,14 @@ export async function explainFlareWindow(req: Request, res: Response) {
   preFlareDate.setDate(preFlareDate.getDate() - 5)
   const preFlareStart = preFlareDate.toISOString().slice(0, 10)
 
-  const [user, baseline, logs] = await Promise.all([
+  const [user, baseline, logs, metrics] = await Promise.all([
     User.findById(req.userId).select('-password'),
     Baseline.findOne({ userId: req.userId }),
     DailyLog.find({
       userId: req.userId,
       date: { $gte: preFlareStart, $lte: endDate },
     }).sort({ date: 1 }),
+    getMetricsForUser(req.userId!),
   ])
 
   if (!baseline) {
@@ -201,6 +264,7 @@ export async function explainFlareWindow(req: Request, res: Response) {
     return
   }
 
+  const baselineObj = baseline.toObject() as unknown as Record<string, unknown>
   const profile = user?.profile
   const lines: string[] = []
 
@@ -213,11 +277,11 @@ export async function explainFlareWindow(req: Request, res: Response) {
   lines.push('')
 
   lines.push('## Baseline ("Normal Day" Ratings)')
-  lines.push(`- Pain: ${baseline.painLevel}/10`)
-  lines.push(`- Fatigue: ${baseline.fatigueLevel}/10`)
-  lines.push(`- Breathing Difficulty: ${baseline.breathingDifficulty}/10`)
-  lines.push(`- Task Limitation: ${baseline.functionalLimitation}/10`)
-  lines.push(`- Sleep: ${baseline.sleepHours}h, quality ${baseline.sleepQuality}/5`)
+  for (const m of metrics) {
+    const val = readValue(baselineObj, m.baselineKey ?? m.id)
+    lines.push(`- ${m.label}: ${val}/10`)
+  }
+  lines.push(`- Sleep: ${readValue(baselineObj, 'sleepHours')}h, quality ${readValue(baselineObj, 'sleepQuality')}/5`)
   lines.push('')
 
   lines.push('## Flare Overview')
@@ -243,9 +307,13 @@ export async function explainFlareWindow(req: Request, res: Response) {
   if (preFlare.length > 0) {
     lines.push('## Pre-Flare Days (look for early warning signs here)')
     for (const log of preFlare) {
+      const logObj = log.toObject() as unknown as Record<string, unknown>
       lines.push(`### ${log.date}`)
-      lines.push(`  Pain ${log.painLevel}/10, Fatigue ${log.fatigueLevel}/10, Breathing ${log.breathingDifficulty}/10, Task Limitation ${log.functionalLimitation}/10`)
-      lines.push(`  Sleep: ${log.sleepHours}h (quality ${log.sleepQuality}/5)`)
+      const symptomStr = metrics
+        .map((m) => `${m.label} ${readValue(logObj, m.id)}/10`)
+        .join(', ')
+      lines.push(`  ${symptomStr}`)
+      lines.push(`  Sleep: ${readValue(logObj, 'sleepHours')}h (quality ${readValue(logObj, 'sleepQuality')}/5)`)
       const flags: string[] = []
       if (log.redFlags?.chestPainWeaknessConfusion) flags.push('Chest pain/weakness/confusion')
       if (log.redFlags?.feverSweatsChills) flags.push('Fever/sweats/chills')
@@ -262,8 +330,12 @@ export async function explainFlareWindow(req: Request, res: Response) {
     const log = logByDate[day.date]
     lines.push(`### ${day.date} — Severity: ${day.validatedFlareLevel}`)
     if (log) {
-      lines.push(`  Self-reported: Pain ${log.painLevel}/10, Fatigue ${log.fatigueLevel}/10, Breathing ${log.breathingDifficulty}/10, Task Limitation ${log.functionalLimitation}/10`)
-      lines.push(`  Sleep: ${log.sleepHours}h (quality ${log.sleepQuality}/5)`)
+      const logObj = log.toObject() as unknown as Record<string, unknown>
+      const symptomStr = metrics
+        .map((m) => `${m.label} ${readValue(logObj, m.id)}/10`)
+        .join(', ')
+      lines.push(`  Self-reported: ${symptomStr}`)
+      lines.push(`  Sleep: ${readValue(logObj, 'sleepHours')}h (quality ${readValue(logObj, 'sleepQuality')}/5)`)
       const flags: string[] = []
       if (log.redFlags?.chestPainWeaknessConfusion) flags.push('Chest pain/weakness/confusion')
       if (log.redFlags?.feverSweatsChills) flags.push('Fever/sweats/chills')
@@ -331,10 +403,11 @@ export async function generateReport(req: Request, res: Response) {
     return
   }
 
-  const [user, baseline, logs] = await Promise.all([
+  const [user, baseline, logs, metrics] = await Promise.all([
     User.findById(req.userId).select('-password'),
     Baseline.findOne({ userId: req.userId }),
     DailyLog.find({ userId: req.userId }).sort({ date: -1 }).limit(14),
+    getMetricsForUser(req.userId!),
   ])
 
   if (!baseline) {
@@ -347,13 +420,17 @@ export async function generateReport(req: Request, res: Response) {
     return
   }
 
+  const baselineObj = baseline.toObject() as unknown as Record<string, unknown>
+  const logObjs = logs.map((l) => l.toObject() as unknown as Record<string, unknown>)
+
   const userMessage = buildUserMessage(
     { profile: user?.profile ?? null },
-    baseline,
-    logs,
+    baselineObj,
+    logObjs,
     flareSummary,
     recentFlareWindows || [],
     recentDailyAnalysis,
+    metrics,
   )
 
   try {

@@ -20,15 +20,19 @@ interface SleepChartProps {
 export default function SleepChart({ logs }: SleepChartProps) {
   const data = useMemo(
     () =>
-      logs.map((log) => ({
-        date: new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        }),
-        hours: log.sleepHours,
-        quality: log.sleepQuality,
-        qualityLabel: SLEEP_QUALITY_LABELS[log.sleepQuality],
-      })),
+      logs.map((log) => {
+        const hours = (log.responses?.sleepHours ?? log.sleepHours) as number
+        const quality = (log.responses?.sleepQuality ?? log.sleepQuality) as number
+        return {
+          date: new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          }),
+          hours,
+          quality,
+          qualityLabel: SLEEP_QUALITY_LABELS[quality],
+        }
+      }),
     [logs],
   )
 

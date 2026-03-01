@@ -1,18 +1,11 @@
-import { SYMPTOM_METRICS } from '../../types/baseline'
-import type { FlareEngineResult, SymptomKey } from '../../lib/flareEngine'
+import type { FlareEngineResult } from '../../lib/flareEngine'
+import type { MetricDefinition } from '../../types/schema'
 
 interface FlareSummaryCardsProps {
   summary: FlareEngineResult['summary']
   totalDays: number
+  metrics?: MetricDefinition[]
 }
-
-const SYMPTOM_LABEL_MAP = Object.fromEntries(
-  SYMPTOM_METRICS.map((m) => [m.key, m.label]),
-) as Record<SymptomKey, string>
-
-const SYMPTOM_COLOR_MAP = Object.fromEntries(
-  SYMPTOM_METRICS.map((m) => [m.key, m.color]),
-) as Record<SymptomKey, string>
 
 const TREND_DISPLAY: Record<string, { label: string; arrow: string; color: string }> = {
   improving: { label: 'Improving', arrow: '\u2193', color: 'text-emerald-600' },
@@ -20,11 +13,14 @@ const TREND_DISPLAY: Record<string, { label: string; arrow: string; color: strin
   worsening: { label: 'Worsening', arrow: '\u2191', color: 'text-red-600' },
 }
 
-export default function FlareSummaryCards({ summary, totalDays }: FlareSummaryCardsProps) {
+export default function FlareSummaryCards({ summary, totalDays, metrics }: FlareSummaryCardsProps) {
   const flarePercent = totalDays > 0
     ? Math.round((summary.totalFlareDays / totalDays) * 100)
     : 0
   const trend = TREND_DISPLAY[summary.trendDirection]
+
+  const worstLabel = metrics?.find((m) => m.key === summary.worstSymptom)?.label ?? summary.worstSymptom
+  const worstColor = metrics?.find((m) => m.key === summary.worstSymptom)?.color ?? '#6366f1'
 
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -56,8 +52,8 @@ export default function FlareSummaryCards({ summary, totalDays }: FlareSummaryCa
       {/* Worst Symptom */}
       <div className="bg-white rounded-2xl border border-border p-4">
         <p className="text-xs text-text-muted mb-1">Most Affected</p>
-        <p className="text-lg font-bold" style={{ color: SYMPTOM_COLOR_MAP[summary.worstSymptom] }}>
-          {SYMPTOM_LABEL_MAP[summary.worstSymptom]}
+        <p className="text-lg font-bold" style={{ color: worstColor }}>
+          {worstLabel}
         </p>
         <p className="text-xs text-text-muted mt-1">
           highest average signal
