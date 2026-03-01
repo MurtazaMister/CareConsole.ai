@@ -477,3 +477,55 @@ export async function generateReport(req: Request, res: Response) {
     res.status(502).json({ error: 'Failed to generate report. Please try again.' })
   }
 }
+
+// ── Clean up speech-to-text transcription ────────────────
+
+export async function cleanNotes(req: Request, res: Response) {
+  const { rawText } = req.body
+  if (!rawText || typeof rawText !== 'string' || rawText.trim().length === 0) {
+    res.json({ text: '', skipped: true })
+    return
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You clean up speech-to-text transcriptions for a patient health tracking app. The patient is dictating notes about how they feel today.
+
+Rules:
+1. Fix grammar, punctuation, and sentence structure so the note reads naturally
+2. Keep the medical meaning intact — do not add or remove symptoms
+3. Keep it concise — one to three sentences max
+4. If the input is complete gibberish, random sounds, or makes absolutely no medical/health sense, respond with exactly: {"text":"","skipped":true}
+5. Otherwise respond with: {"text":"the cleaned note","skipped":false}
+
+Respond ONLY with the JSON object, nothing else.`,
+        },
+        { role: 'user', content: rawText.trim() },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+      max_tokens: 200,
+    })
+
+    const content = completion.choices[0]?.message?.content
+    if (!content) {
+      res.json({ text: rawText.trim(), skipped: false })
+      return
+    }
+
+    const parsed = JSON.parse(content)
+    res.json({ text: parsed.text ?? '', skipped: !!parsed.skipped })
+  } catch (err) {
+    const error = err as Error & { status?: number }
+    if (error.status === 429) {
+      res.status(429).json({ error: 'AI service rate limit reached. Please try again.' })
+      return
+    }
+    // On failure, return raw text rather than blocking the user
+    res.json({ text: rawText.trim(), skipped: false })
+  }
+}

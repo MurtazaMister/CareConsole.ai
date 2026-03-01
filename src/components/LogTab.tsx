@@ -154,8 +154,8 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   let liveTotal = 0
   for (const q of sliderQs) {
     if (q.baselineKey) {
-      const val = form[q.id] as number
-      const base = readBaselineVal(baseline as FormValues, q.baselineKey) as number
+      const val = (form[q.id] as number) ?? 0
+      const base = (readBaselineVal(baseline as FormValues, q.baselineKey) as number) ?? 0
       const diff = val - base
       liveDeviation[q.id] = diff
       liveTotal += Math.abs(diff)
@@ -186,8 +186,8 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
             <div className="bg-surface rounded-xl p-4 mb-4">
               <div className="grid grid-cols-4 gap-3 mb-3">
                 {sliderQs.map((q) => {
-                  const val = readLogVal(todayLog as FormValues, q.id) as number
-                  const base = q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) as number : 0
+                  const val = (readLogVal(todayLog as FormValues, q.id) as number) ?? 0
+                  const base = (q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) as number : 0) ?? 0
                   const diff = val - base
                   return (
                     <div key={q.id} className="text-center">
@@ -317,8 +317,8 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
       <div className="bg-white rounded-2xl border border-border p-5">
         <h3 className="font-semibold text-text mb-3 text-sm">Symptoms vs Baseline</h3>
         {sliderQs.map((q) => {
-          const val = form[q.id] as number
-          const base = q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) as number : 0
+          const val = (form[q.id] as number) ?? 0
+          const base = (q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) as number : 0) ?? 0
           const diff = liveDeviation[q.id] ?? 0
           return (
             <div key={q.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
@@ -363,19 +363,6 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
         </div>
       </div>
 
-      {/* Notes */}
-      <div className="bg-white rounded-2xl border border-border p-5">
-        <label className="block text-sm font-medium text-text mb-1">
-          Anything notable? <span className="text-text-muted font-normal">(optional)</span>
-        </label>
-        <textarea
-          value={form.notes as string}
-          onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-          placeholder="Brief note for your doctor..."
-          className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-text placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none transition-all"
-          rows={2}
-        />
-      </div>
     </div>
   )
 
