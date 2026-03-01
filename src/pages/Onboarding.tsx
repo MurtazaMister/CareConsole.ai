@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
 import { useBaseline } from '../hooks/useBaseline'
 import { SLEEP_QUALITY_LABELS } from '../types/baseline'
 import type { BaselineProfile } from '../types/baseline'
@@ -32,8 +33,37 @@ const SLIDER_COLORS = [
 
 export default function Onboarding() {
   const navigate = useNavigate()
+  const { currentUser, logout, deleteAccount } = useAuth()
   const { baseline, setBaseline, fetchBaseline } = useBaseline()
   const { fetchSchema } = useSchema()
+
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [menuOpen])
+
+  const initial = currentUser?.username?.charAt(0).toUpperCase() ?? '?'
+
+  const handleLogout = async () => {
+    setMenuOpen(false)
+    await logout()
+    navigate('/auth')
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeletingAccount(true)
+    const result = await deleteAccount()
+    setDeletingAccount(false)
+    if (result.success) navigate('/auth')
+  }
 
   useEffect(() => {
     fetchBaseline()
@@ -223,10 +253,44 @@ export default function Onboarding() {
       <div className="bg-white border-b border-border sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-lg font-semibold text-text">
-              {baseline ? 'Edit Your Baseline' : 'Set Your Baseline'}
-            </h1>
-            <span className="text-sm text-text-muted font-medium">{step + 1} / {totalSteps}</span>
+            <div>
+              <h1 className="text-lg font-semibold text-text">
+                {baseline ? 'Edit Your Baseline' : 'Set Your Baseline'}
+              </h1>
+              <span className="text-xs text-text-muted">Step {step + 1} of {totalSteps}</span>
+            </div>
+
+            {/* User menu */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent text-white font-bold text-sm flex items-center justify-center hover:shadow-lg hover:shadow-primary/20 transition-all"
+              >
+                {initial}
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-12 w-56 bg-white rounded-xl border border-border shadow-lg overflow-hidden z-20">
+                  <div className="px-4 py-3 border-b border-border">
+                    <p className="text-sm font-semibold text-text">{currentUser?.username}</p>
+                    <p className="text-xs text-text-muted truncate">{currentUser?.email}</p>
+                  </div>
+                  <div className="border-t border-border py-1">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2.5 text-sm text-danger hover:bg-red-50 transition-colors"
+                    >
+                      Log Out
+                    </button>
+                    <button
+                      onClick={() => { setMenuOpen(false); setShowDeleteConfirm(true) }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-danger hover:bg-red-50 transition-colors"
+                    >
+                      Delete Account
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="h-2 bg-surface-dark rounded-full overflow-hidden">
             <div
@@ -591,6 +655,34 @@ export default function Onboarding() {
           ))}
         </div>
       </div>
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-border shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-semibold text-text mb-2">Delete Account</h3>
+            <p className="text-sm text-text-muted mb-6">
+              This will permanently delete your account and all associated data. This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deletingAccount}
+                className="px-4 py-2.5 text-sm font-medium text-text-muted border border-border rounded-xl hover:bg-surface transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount}
+                className="px-4 py-2.5 text-sm font-medium text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors"
+              >
+                {deletingAccount ? 'Deleting...' : 'Delete My Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
