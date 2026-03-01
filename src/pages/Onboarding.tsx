@@ -44,7 +44,12 @@ export default function Onboarding() {
   const progress = ((step + 1) / totalSteps) * 100
 
   const canProceedStep0 = condition.trim().length > 0 && duration > 0
-  const canSubmit = confirmed && canProceedStep0
+  const timeToMinutes = (t: string) => {
+    const [h, m] = t.split(':').map(Number)
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0)
+  }
+  const isSleepOrderValid = timeToMinutes(wakeTime) > timeToMinutes(bedtime)
+  const canSubmit = confirmed && canProceedStep0 && isSleepOrderValid
 
   const getDurationMonths = () => {
     if (durationUnit === 'weeks') return Math.max(0, Math.round(duration / 4))
@@ -207,9 +212,16 @@ export default function Onboarding() {
                 </div>
               </div>
             </div>
-            <LikertScale value={sleepQuality} onChange={setSleepQuality} showIcon={false} variant="neutral" />
-            <TimeInput label="Usual Bedtime" icon="🌙" value={bedtime} onChange={setBedtime} showIcon={false} />
-            <TimeInput label="Usual Wake Time" icon="☀️" value={wakeTime} onChange={setWakeTime} showIcon={false} />
+            <LikertScale value={sleepQuality} onChange={setSleepQuality} showIcon={false} variant="neutral" boxStyle="intensity" />
+            <TimeInput label="Usual Bedtime" icon="🌙" value={bedtime} onChange={setBedtime} showIcon={false} showDropdownArrow />
+            <TimeInput label="Usual Wake Time" icon="☀️" value={wakeTime} onChange={setWakeTime} showIcon={false} showDropdownArrow />
+            {!isSleepOrderValid && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-xs">
+                  Usual wake time must be later than usual bedtime.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -291,7 +303,7 @@ export default function Onboarding() {
         <div className="flex items-center justify-between mt-8 max-w-lg mx-auto">
           <button
             onClick={() => step > 0 ? setStep(step - 1) : baseline ? navigate('/dashboard') : undefined}
-            className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
+            className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 cursor-pointer ${
               step === 0 && !baseline ? 'opacity-0 pointer-events-none' : 'text-text-muted hover:text-text hover:bg-white hover:shadow-md'
             }`}
           >
@@ -302,7 +314,7 @@ export default function Onboarding() {
             <button
               onClick={handleSubmit}
               disabled={!canSubmit}
-              className={`px-8 py-3 rounded-xl font-semibold text-white transition-all duration-200 ${
+              className={`px-8 py-3 rounded-xl font-semibold text-white transition-all duration-200 cursor-pointer ${
                 canSubmit
                   ? 'bg-gradient-to-r from-primary to-primary-dark hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5'
                   : 'bg-gray-300 cursor-not-allowed'
@@ -313,9 +325,9 @@ export default function Onboarding() {
           ) : (
             <button
               onClick={() => setStep(step + 1)}
-              disabled={step === 0 && !canProceedStep0}
-              className={`px-8 py-3 rounded-xl font-semibold text-white transition-all duration-200 ${
-                step === 0 && !canProceedStep0
+              disabled={(step === 0 && !canProceedStep0) || (step === 2 && !isSleepOrderValid)}
+              className={`px-8 py-3 rounded-xl font-semibold text-white transition-all duration-200 cursor-pointer ${
+                (step === 0 && !canProceedStep0) || (step === 2 && !isSleepOrderValid)
                   ? 'bg-gray-300 cursor-not-allowed'
                   : 'bg-gradient-to-r from-primary to-primary-dark hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5'
               }`}
@@ -330,7 +342,7 @@ export default function Onboarding() {
           {Array.from({ length: totalSteps }, (_, i) => (
             <button
               key={i}
-              onClick={() => (i === 0 || canProceedStep0) ? setStep(i) : undefined}
+              onClick={() => (i === 0 || canProceedStep0) && (i < 3 || isSleepOrderValid) ? setStep(i) : undefined}
               className={`rounded-full transition-all duration-300 ${
                 i === step ? 'w-8 h-2 bg-primary' : i < step ? 'w-2 h-2 bg-primary/40' : 'w-2 h-2 bg-surface-dark'
               }`}
