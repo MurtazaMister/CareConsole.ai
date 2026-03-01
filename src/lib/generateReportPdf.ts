@@ -37,7 +37,7 @@ function renderHeaderBar(doc: jsPDF, isFirstPage: boolean): number {
   doc.setFont('Helvetica', 'bold')
   doc.setFontSize(18)
   setColor(doc, TEXT)
-  doc.text('HackRare Health Report', MARGIN, y)
+  doc.text('CareConsole.ai Health Report', MARGIN, y)
 
   // Generated date
   y += 7
@@ -235,7 +235,7 @@ function renderFooters(doc: jsPDF) {
     doc.setFontSize(8)
     setColor(doc, MUTED)
 
-    const footerText = `HackRare  \u2022  Page ${i} of ${totalPages}  \u2022  ${generatedLabel}`
+    const footerText = `CareConsole.ai  \u2022  Page ${i} of ${totalPages}  \u2022  ${generatedLabel}`
     const footerWidth = doc.getTextWidth(footerText)
     doc.text(footerText, (PAGE_W - footerWidth) / 2, pageH - 10)
   }

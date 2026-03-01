@@ -95,7 +95,7 @@ export default function PatientDashboard() {
         <div className="max-w-4xl mx-auto px-6 pt-4 pb-3">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-xl font-bold text-text">HackRare</h1>
+              <h1 className="text-xl font-brand text-text">CareConsole.ai</h1>
               <p className="text-text-muted text-xs">Baseline: {baselineDateDisplay}</p>
             </div>
 

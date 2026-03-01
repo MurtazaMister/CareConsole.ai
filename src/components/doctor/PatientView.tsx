@@ -3,6 +3,7 @@ import { useDoctor } from '../../hooks/useDoctor'
 import { BaselineContext } from '../../context/baselineContext'
 import { LogsContext } from '../../context/logsContext'
 import { SchemaContext } from '../../context/schemaContext'
+import { ViewingPatientContext } from '../../context/viewingPatientContext'
 import { LOG_FORM_SCHEMA, getSliderQuestions } from '../../constants/logFormSchema'
 import type { LogFormSchema } from '../../constants/logFormSchema'
 import type { BaselineProfile } from '../../types/baseline'
@@ -141,16 +142,18 @@ export default function PatientView({ onBack }: { onBack: () => void }) {
       </div>
 
       {/* Override contexts with patient data so existing tabs just work */}
-      <BaselineContext.Provider value={baselineCtx}>
-        <LogsContext.Provider value={logsCtx}>
-          <SchemaContext.Provider value={schemaCtx}>
-            {activeTab === 'overview' && <OverviewTab onSwitchTab={handleSwitchTab} />}
-            {activeTab === 'history' && <HistoryTab onSwitchTab={handleSwitchTab} />}
-            {activeTab === 'insights' && <InsightsTab onSwitchTab={handleSwitchTab} />}
-            {activeTab === 'reports' && <ReportsTab onSwitchTab={handleSwitchTab} />}
-          </SchemaContext.Provider>
-        </LogsContext.Provider>
-      </BaselineContext.Provider>
+      <ViewingPatientContext.Provider value={patient.id}>
+        <BaselineContext.Provider value={baselineCtx}>
+          <LogsContext.Provider value={logsCtx}>
+            <SchemaContext.Provider value={schemaCtx}>
+              {activeTab === 'overview' && <OverviewTab onSwitchTab={handleSwitchTab} />}
+              {activeTab === 'history' && <HistoryTab onSwitchTab={handleSwitchTab} />}
+              {activeTab === 'insights' && <InsightsTab onSwitchTab={handleSwitchTab} />}
+              {activeTab === 'reports' && <ReportsTab onSwitchTab={handleSwitchTab} />}
+            </SchemaContext.Provider>
+          </LogsContext.Provider>
+        </BaselineContext.Provider>
+      </ViewingPatientContext.Provider>
     </div>
   )
 }

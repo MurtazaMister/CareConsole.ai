@@ -63,8 +63,8 @@ export default function DoctorDashboard() {
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-text">
-                HackRare <span className="text-primary text-sm font-medium">Professional</span>
+              <h1 className="text-xl font-brand text-text">
+                CareConsole.ai <span className="text-primary text-sm font-medium">Pro</span>
               </h1>
               <p className="text-text-muted text-xs">Doctor Dashboard</p>
             </div>

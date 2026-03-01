@@ -76,8 +76,8 @@ export default function Auth() {
           <div className="w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary/20">
             <span className="text-3xl">🩺</span>
           </div>
-          <h1 className="text-2xl font-bold text-text">HackRare</h1>
-          <p className="text-text-muted text-sm mt-1">Early flare detection for rare diseases</p>
+          <h1 className="text-2xl font-brand text-text">CareConsole.ai</h1>
+          <p className="text-text-muted text-sm mt-1">Intelligent flare detection for chronic conditions</p>
         </div>
 
         {/* Mode toggle */}

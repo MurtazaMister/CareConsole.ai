@@ -1,9 +1,11 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useContext } from 'react'
+import { ViewingPatientContext } from '../context/viewingPatientContext'
 import type { FlareExplanationRequest, FlareExplanationState } from '../types/flareExplanation'
 
 export function useFlareExplanation() {
   const cache = useRef<Map<string, FlareExplanationState>>(new Map())
   const [, setTick] = useState(0)
+  const patientId = useContext(ViewingPatientContext)
 
   const rerender = useCallback(() => setTick((t) => t + 1), [])
 
@@ -24,11 +26,12 @@ export function useFlareExplanation() {
       rerender()
 
       try {
+        const body = patientId ? { ...payload, patientId } : payload
         const res = await fetch('/api/ai/explain-flare', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify(payload),
+          body: JSON.stringify(body),
         })
 
         if (!res.ok) {
@@ -57,7 +60,7 @@ export function useFlareExplanation() {
 
       rerender()
     },
-    [rerender],
+    [rerender, patientId],
   )
 
   return { getState, fetchExplanation }
