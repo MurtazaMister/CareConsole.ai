@@ -4,7 +4,7 @@ import { useLogs } from '../../hooks/useLogs'
 import { useFilteredLogs } from '../../hooks/useFilteredLogs'
 import { useFlareEngine } from '../../hooks/useFlareEngine'
 import { SYMPTOM_METRICS } from '../../types/baseline'
-import type { DateRangeKey } from '../../constants/chartTheme'
+import type { DateRange } from '../../constants/chartTheme'
 import ChartSection from './ChartSection'
 import DateRangeSelector from './DateRangeSelector'
 import MetricToggle from './MetricToggle'
@@ -16,7 +16,7 @@ import SleepChart from './SleepChart'
 export default function ChartsPanel() {
   const { baseline } = useBaseline()
   const { logs, getTodayLog } = useLogs()
-  const [range, setRange] = useState<DateRangeKey>('14d')
+  const [range, setRange] = useState<DateRange>({ preset: '1m', days: 30 })
   const [activeMetrics, setActiveMetrics] = useState<Set<string>>(
     new Set(SYMPTOM_METRICS.map((m) => m.key)),
   )

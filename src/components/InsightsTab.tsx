@@ -4,7 +4,7 @@ import { useFlareEngine } from '../hooks/useFlareEngine'
 import { useFilteredLogs } from '../hooks/useFilteredLogs'
 import { useFlareExplanation } from '../hooks/useFlareExplanation'
 import { SYMPTOM_METRICS } from '../types/baseline'
-import type { DateRangeKey } from '../constants/chartTheme'
+import type { DateRange } from '../constants/chartTheme'
 import type { FlareWindow, DayAnalysis } from '../lib/flareEngine'
 import FlareStatusBanner from './insights/FlareStatusBanner'
 import FlareSummaryCards from './insights/FlareSummaryCards'
@@ -22,7 +22,7 @@ interface InsightsTabProps {
 
 export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
   const flareResult = useFlareEngine()
-  const [range, setRange] = useState<DateRangeKey>('all')
+  const [range, setRange] = useState<DateRange>({ preset: '1y', days: 365 })
   const [activeMetrics, setActiveMetrics] = useState<Set<string>>(
     new Set(SYMPTOM_METRICS.map((m) => m.key)),
   )
