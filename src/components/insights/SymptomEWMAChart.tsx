@@ -58,7 +58,7 @@ export default function SymptomEWMAChart({ dailyAnalysis, activeMetrics }: Sympt
             name={`${metric.label} (EWMA)`}
             stroke={metric.color}
             strokeWidth={2.5}
-            dot={{ r: 3, strokeWidth: 2, fill: 'white' }}
+            dot={false}
             activeDot={{ r: 5, strokeWidth: 2 }}
           />
         ))}

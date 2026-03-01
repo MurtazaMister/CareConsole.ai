@@ -92,7 +92,7 @@ export default function SymptomTrendChart({ logs, activeMetrics, flareWindows }:
             name={metric.label}
             stroke={metric.color}
             strokeWidth={2.5}
-            dot={{ r: 3, strokeWidth: 2, fill: 'white' }}
+            dot={false}
             activeDot={{ r: 5, strokeWidth: 2 }}
           />
         ))}
