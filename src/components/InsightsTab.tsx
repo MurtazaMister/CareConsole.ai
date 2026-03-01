@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import type { Tab } from './TabBar'
 import { useFlareEngine } from '../hooks/useFlareEngine'
 import { useFilteredLogs } from '../hooks/useFilteredLogs'
+import { useFlareExplanation } from '../hooks/useFlareExplanation'
 import { SYMPTOM_METRICS } from '../types/baseline'
 import type { DateRangeKey } from '../constants/chartTheme'
+import type { FlareWindow, DayAnalysis } from '../lib/flareEngine'
 import FlareStatusBanner from './insights/FlareStatusBanner'
 import FlareSummaryCards from './insights/FlareSummaryCards'
 import CompositeScoreChart from './insights/CompositeScoreChart'
@@ -25,6 +27,7 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
     new Set(SYMPTOM_METRICS.map((m) => m.key)),
   )
   const [selectedWindowId, setSelectedWindowId] = useState<string | null>(null)
+  const { getState, fetchExplanation } = useFlareExplanation()
 
   const filteredLogs = useFilteredLogs(range)
 
@@ -152,23 +155,33 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
       {filteredWindows.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-lg font-semibold text-text">Detected Events</h3>
-          {filteredWindows.map((fw) => (
-            <FlareEventCard
-              key={fw.id}
-              window={fw}
-              dailyAnalysis={flareResult.dailyAnalysis.filter(
-                (d) =>
-                  d.date >= fw.startDate &&
-                  d.date <= (fw.endDate ?? '9999-12-31'),
-              )}
-              isExpanded={selectedWindowId === fw.id}
-              onToggle={() =>
-                setSelectedWindowId(
-                  selectedWindowId === fw.id ? null : fw.id,
-                )
-              }
-            />
-          ))}
+          {filteredWindows.map((fw) => {
+            const windowAnalysis = flareResult.dailyAnalysis.filter(
+              (d) =>
+                d.date >= fw.startDate &&
+                d.date <= (fw.endDate ?? '9999-12-31'),
+            )
+            return (
+              <FlareEventCard
+                key={fw.id}
+                window={fw}
+                dailyAnalysis={windowAnalysis}
+                isExpanded={selectedWindowId === fw.id}
+                onToggle={() =>
+                  setSelectedWindowId(
+                    selectedWindowId === fw.id ? null : fw.id,
+                  )
+                }
+                explanationState={getState(fw.id)}
+                onRequestExplanation={() =>
+                  fetchExplanation(fw.id, {
+                    flareWindow: fw,
+                    dailyAnalysis: windowAnalysis,
+                  })
+                }
+              />
+            )
+          })}
         </div>
       )}
 

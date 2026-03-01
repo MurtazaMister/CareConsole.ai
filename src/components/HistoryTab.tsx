@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useBaseline } from '../hooks/useBaseline'
 import { useLogs } from '../hooks/useLogs'
 import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
@@ -136,9 +136,8 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
                 })
 
                 return (
-                  <>
+                  <Fragment key={log.date}>
                     <tr
-                      key={log.date}
                       onClick={() => toggleExpand(log.date)}
                       className={`border-b border-border/50 hover:bg-surface/50 cursor-pointer transition-colors ${isExpanded ? 'bg-surface/30' : ''}`}
                     >
@@ -168,7 +167,7 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
                       </td>
                     </tr>
                     {isExpanded && renderLogDetail(log)}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>

@@ -114,6 +114,160 @@ function buildUserMessage(
   return lines.join('\n')
 }
 
+const FLARE_EXPLAIN_PROMPT = `You are a compassionate health assistant explaining a detected flare to a patient with a chronic condition. Your goal is to help them understand what happened in their body during this period — not just list numbers.
+
+You will receive:
+- The patient's baseline (their "normal day" self-reported ratings, 0-10 scale)
+- Their actual daily self-reported symptom ratings during the flare (0-10 scale)
+- Statistical signals from our flare detection engine (explained below)
+
+KEY CONCEPTS (do NOT use these terms in your response — translate them into plain language):
+- "Z-Score": how many standard deviations a symptom is above the patient's personal normal. A z-score of 2 means "roughly double their usual variability."
+- "EWMA": a smoothed trend line. Unlike a single day's rating, EWMA builds up over consecutive bad days. A high EWMA means the symptom has been consistently elevated, not just a one-day spike.
+- "Composite Score": a weighted combination of all 4 symptoms into one overall flare intensity number. Higher = worse overall.
+- "Contribution %": how much each symptom contributed to the overall flare score. This tells you which symptom was the primary driver.
+
+YOUR TASK:
+Write 3-5 sentences explaining this flare. Be specific and insightful:
+- Compare their actual reported ratings to their baseline (e.g., "Your pain ran around 7/10 during this period, well above your usual 3/10")
+- Identify the primary driver and explain WHY it matters (e.g., "Fatigue was the biggest factor — it didn't just spike once, it stayed elevated across the entire window, which is what pushed this into a detected flare")
+- If symptoms moved together, note the pattern (e.g., "Pain and breathing difficulty rose in tandem")
+- If the flare escalated, explain what that means practically
+- If patient notes are present, connect them to the data when relevant
+
+Respond with JSON: { "explanation": "your explanation here" }
+
+Rules:
+- Max 150 words
+- Use the patient's actual self-reported ratings (the /10 numbers), NOT statistical scores
+- Never say "EWMA", "Z-Score", "composite score", or "standard deviation" — use plain language like "consistently above your usual", "a sustained pattern", "trending worse over several days"
+- Never diagnose or prescribe
+- Tone: calm, clear, empowering — like a knowledgeable friend explaining a lab result`
+
+export async function explainFlareWindow(req: Request, res: Response) {
+  const { flareWindow, dailyAnalysis } = req.body
+
+  if (!flareWindow || !dailyAnalysis) {
+    res.status(400).json({ error: 'Flare window and daily analysis data are required' })
+    return
+  }
+
+  const endDate = flareWindow.endDate || new Date().toISOString().slice(0, 10)
+
+  const [user, baseline, logs] = await Promise.all([
+    User.findById(req.userId).select('-password'),
+    Baseline.findOne({ userId: req.userId }),
+    DailyLog.find({
+      userId: req.userId,
+      date: { $gte: flareWindow.startDate, $lte: endDate },
+    }).sort({ date: 1 }),
+  ])
+
+  if (!baseline) {
+    res.status(400).json({ error: 'Baseline is required' })
+    return
+  }
+
+  const profile = user?.profile
+  const lines: string[] = []
+
+  lines.push('## Patient Context')
+  lines.push(`- Condition: ${baseline.primaryCondition}`)
+  if (profile) {
+    lines.push(`- Age: ${profile.age}`)
+    lines.push(`- Medications: ${profile.currentMedications || 'None reported'}`)
+  }
+  lines.push('')
+
+  lines.push('## Baseline ("Normal Day" Ratings)')
+  lines.push(`- Pain: ${baseline.painLevel}/10`)
+  lines.push(`- Fatigue: ${baseline.fatigueLevel}/10`)
+  lines.push(`- Breathing Difficulty: ${baseline.breathingDifficulty}/10`)
+  lines.push(`- Task Limitation: ${baseline.functionalLimitation}/10`)
+  lines.push(`- Sleep: ${baseline.sleepHours}h, quality ${baseline.sleepQuality}/5`)
+  lines.push('')
+
+  lines.push('## Flare Overview')
+  lines.push(`- Period: ${flareWindow.startDate} to ${flareWindow.endDate || 'ongoing'}`)
+  lines.push(`- Duration: ${flareWindow.durationDays} days`)
+  lines.push(`- Severity reached: ${flareWindow.peakLevel}`)
+  if (flareWindow.escalated) {
+    lines.push(`- This flare escalated (got significantly worse) on ${flareWindow.escalationDate}`)
+  }
+  if (flareWindow.triggerNotes?.length > 0) {
+    lines.push(`- Patient's own notes: "${flareWindow.triggerNotes.join('"; "')}"`)
+  }
+  lines.push('')
+
+  // Build a log lookup for actual ratings
+  const logByDate: Record<string, typeof logs[0]> = {}
+  for (const log of logs) {
+    logByDate[log.date] = log
+  }
+
+  lines.push('## Day-by-Day Detail')
+  lines.push('Each day shows: self-reported ratings (what the patient actually felt) + statistical signals (how unusual it was).')
+  lines.push('')
+  for (const day of dailyAnalysis) {
+    const log = logByDate[day.date]
+    lines.push(`### ${day.date} — Severity: ${day.validatedFlareLevel}`)
+    if (log) {
+      lines.push(`  Self-reported: Pain ${log.painLevel}/10, Fatigue ${log.fatigueLevel}/10, Breathing ${log.breathingDifficulty}/10, Task Limitation ${log.functionalLimitation}/10`)
+      lines.push(`  Sleep: ${log.sleepHours}h (quality ${log.sleepQuality}/5)`)
+      if (log.notes) lines.push(`  Notes: "${log.notes}"`)
+    }
+    // Statistical context: contribution breakdown
+    const topSymptoms = day.contributingSymptoms.slice(0, 3)
+    const totalContrib = day.contributingSymptoms.reduce((s: number, c: { contribution: number }) => s + c.contribution, 0)
+    const contribSummary = topSymptoms
+      .map((c: { label: string; ewma: number; zScore: number; contribution: number }) => {
+        const pct = totalContrib > 0 ? Math.round((c.contribution / totalContrib) * 100) : 0
+        return `${c.label} (${pct}% of flare signal, z-score: ${c.zScore.toFixed(1)}, smoothed trend: ${c.ewma.toFixed(1)})`
+      })
+      .join(', ')
+    lines.push(`  Flare drivers: ${contribSummary}`)
+    lines.push('')
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: FLARE_EXPLAIN_PROMPT },
+        { role: 'user', content: lines.join('\n') },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+      max_tokens: 300,
+    })
+
+    const content = completion.choices[0]?.message?.content
+    if (!content) {
+      res.status(502).json({ error: 'No response from AI service' })
+      return
+    }
+
+    const parsed = JSON.parse(content)
+    if (!parsed.explanation) {
+      res.status(502).json({ error: 'AI returned an incomplete response' })
+      return
+    }
+
+    res.json({
+      explanation: parsed.explanation,
+      generatedAt: new Date().toISOString(),
+    })
+  } catch (err) {
+    const error = err as Error & { status?: number }
+    if (error.status === 429) {
+      res.status(429).json({ error: 'AI service rate limit reached. Please try again in a moment.' })
+      return
+    }
+    console.error('OpenAI error:', error.message)
+    res.status(502).json({ error: 'Failed to generate explanation. Please try again.' })
+  }
+}
+
 export async function generateReport(req: Request, res: Response) {
   const { flareSummary, recentFlareWindows, recentDailyAnalysis } = req.body
 
