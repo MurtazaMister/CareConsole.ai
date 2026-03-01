@@ -4,14 +4,27 @@ import { useAuth } from '../hooks/useAuth'
 import { useDoctor } from '../hooks/useDoctor'
 import ClientList from '../components/doctor/ClientList'
 import PatientView from '../components/doctor/PatientView'
+import type { BaselineProfile } from '../types/baseline'
+
+type DoctorTab = 'overview' | 'history' | 'insights' | 'reports'
+
+const TABS: { key: DoctorTab; label: string; icon: string }[] = [
+  { key: 'overview', label: 'Overview', icon: '📊' },
+  { key: 'history', label: 'Log History', icon: '📅' },
+  { key: 'insights', label: 'Insights', icon: '🔬' },
+  { key: 'reports', label: 'Reports', icon: '📄' },
+]
 
 export default function DoctorDashboard() {
-  const { currentUser, logout } = useAuth()
+  const { currentUser, logout, deleteAccount } = useAuth()
   const { fetchClients, fetchPatientData, clearSelectedPatient, selectedPatient, patientLoading } = useDoctor()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const [fetched, setFetched] = useState(false)
+  const [activeTab, setActiveTab] = useState<DoctorTab>('overview')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
 
   useEffect(() => {
     if (!fetched) {
@@ -37,7 +50,17 @@ export default function DoctorDashboard() {
     navigate('/auth')
   }
 
+  const handleDeleteAccount = async () => {
+    setDeletingAccount(true)
+    const result = await deleteAccount()
+    setDeletingAccount(false)
+    if (result.success) {
+      navigate('/auth')
+    }
+  }
+
   const handleSelectPatient = async (patientId: string) => {
+    setActiveTab('overview')
     await fetchPatientData(patientId)
   }
 
@@ -56,17 +79,58 @@ export default function DoctorDashboard() {
     )
   }
 
+  const patientBaseline = selectedPatient?.baseline as BaselineProfile | null
+  const baselineDateDisplay = patientBaseline?.baselineDate
+    ? new Date(patientBaseline.baselineDate + 'T00:00:00').toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : null
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-cyan-50">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-border sticky top-0 z-20">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-text">
-                HackRare <span className="text-primary text-sm font-medium">Professional</span>
-              </h1>
-              <p className="text-text-muted text-xs">Doctor Dashboard</p>
+      <div className="bg-white border-b border-border sticky top-0 z-20">
+        <div className="max-w-4xl mx-auto px-6 pt-4 pb-3">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              {/* Back button when viewing patient */}
+              {selectedPatient && (
+                <button
+                  onClick={handleBack}
+                  className="p-1.5 -ml-1.5 rounded-lg hover:bg-surface transition-colors text-text-muted hover:text-text"
+                >
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+              )}
+              <div>
+                {selectedPatient ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/80 to-accent/80 text-white font-bold text-xs flex items-center justify-center">
+                        {selectedPatient.patient.username.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <h1 className="text-lg font-bold text-text leading-tight">{selectedPatient.patient.username}</h1>
+                        <p className="text-text-muted text-xs">
+                          {patientBaseline?.primaryCondition ?? 'No condition set'}
+                          {baselineDateDisplay ? ` · Baseline: ${baselineDateDisplay}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h1 className="text-xl font-brand text-text">
+                      CareConsole.ai <span className="text-primary text-sm font-medium">Pro</span>
+                    </h1>
+                    <p className="text-text-muted text-xs">Doctor Dashboard</p>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* User menu */}
@@ -90,11 +154,38 @@ export default function DoctorDashboard() {
                     >
                       Log Out
                     </button>
+                    <button
+                      onClick={() => { setMenuOpen(false); setShowDeleteConfirm(true) }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-danger hover:bg-red-50 transition-colors"
+                    >
+                      Delete Account
+                    </button>
                   </div>
                 </div>
               )}
             </div>
           </div>
+
+          {/* Tab bar — only when viewing a patient */}
+          {selectedPatient && (
+            <div className="flex gap-1 bg-surface-dark p-1 rounded-xl">
+              {TABS.map(({ key, label, icon }) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={`
+                    flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
+                    ${activeTab === key
+                      ? 'bg-white text-text shadow-sm'
+                      : 'text-text-muted hover:text-text hover:bg-white/50'}
+                  `}
+                >
+                  <span>{icon}</span>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -108,11 +199,39 @@ export default function DoctorDashboard() {
             </div>
           </div>
         ) : selectedPatient ? (
-          <PatientView onBack={handleBack} />
+          <PatientView activeTab={activeTab} onSwitchTab={(tab) => setActiveTab(tab as DoctorTab)} />
         ) : (
           <ClientList onSelectPatient={handleSelectPatient} />
         )}
       </div>
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-border shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-semibold text-text mb-2">Delete Account</h3>
+            <p className="text-sm text-text-muted mb-6">
+              This will permanently delete your account and all associated data. This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deletingAccount}
+                className="px-4 py-2.5 text-sm font-medium text-text-muted border border-border rounded-xl hover:bg-surface transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount}
+                className="px-4 py-2.5 text-sm font-medium text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors"
+              >
+                {deletingAccount ? 'Deleting...' : 'Delete My Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

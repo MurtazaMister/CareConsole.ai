@@ -20,6 +20,7 @@ export interface AuthContextType {
   login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
   saveProfile: (profile: UserProfile) => Promise<{ success: boolean; error?: string }>
+  deleteAccount: () => Promise<{ success: boolean; error?: string }>
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null)

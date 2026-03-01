@@ -5,6 +5,14 @@ import Baseline from '../models/Baseline'
 import DailyLog from '../models/DailyLog'
 import User from '../models/User'
 import UserSchema from '../models/UserSchema'
+import DoctorClient from '../models/DoctorClient'
+
+/** Resolve whose data to query: the logged-in user, or a patient the doctor has access to */
+async function resolveTargetUser(req: Request, patientId?: string): Promise<string | null> {
+  if (!patientId) return req.userId!
+  const link = await DoctorClient.findOne({ doctorId: req.userId, patientId })
+  return link ? patientId : null
+}
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY })
 
@@ -235,10 +243,16 @@ Rules:
 - Tone: warm, insightful, genuinely helpful — like a thoughtful friend who also understands health data`
 
 export async function explainFlareWindow(req: Request, res: Response) {
-  const { flareWindow, dailyAnalysis } = req.body
+  const { flareWindow, dailyAnalysis, patientId } = req.body
 
   if (!flareWindow || !dailyAnalysis) {
     res.status(400).json({ error: 'Flare window and daily analysis data are required' })
+    return
+  }
+
+  const targetUserId = await resolveTargetUser(req, patientId)
+  if (!targetUserId) {
+    res.status(403).json({ error: 'You do not have access to this patient' })
     return
   }
 
@@ -250,13 +264,13 @@ export async function explainFlareWindow(req: Request, res: Response) {
   const preFlareStart = preFlareDate.toISOString().slice(0, 10)
 
   const [user, baseline, logs, metrics] = await Promise.all([
-    User.findById(req.userId).select('-password'),
-    Baseline.findOne({ userId: req.userId }),
+    User.findById(targetUserId).select('-password'),
+    Baseline.findOne({ userId: targetUserId }),
     DailyLog.find({
-      userId: req.userId,
+      userId: targetUserId,
       date: { $gte: preFlareStart, $lte: endDate },
     }).sort({ date: 1 }),
-    getMetricsForUser(req.userId!),
+    getMetricsForUser(targetUserId),
   ])
 
   if (!baseline) {
@@ -396,18 +410,24 @@ export async function explainFlareWindow(req: Request, res: Response) {
 }
 
 export async function generateReport(req: Request, res: Response) {
-  const { flareSummary, recentFlareWindows, recentDailyAnalysis } = req.body
+  const { flareSummary, recentFlareWindows, recentDailyAnalysis, patientId } = req.body
 
   if (!flareSummary || !recentDailyAnalysis) {
     res.status(400).json({ error: 'Flare analysis data is required' })
     return
   }
 
+  const targetUserId = await resolveTargetUser(req, patientId)
+  if (!targetUserId) {
+    res.status(403).json({ error: 'You do not have access to this patient' })
+    return
+  }
+
   const [user, baseline, logs, metrics] = await Promise.all([
-    User.findById(req.userId).select('-password'),
-    Baseline.findOne({ userId: req.userId }),
-    DailyLog.find({ userId: req.userId }).sort({ date: -1 }).limit(14),
-    getMetricsForUser(req.userId!),
+    User.findById(targetUserId).select('-password'),
+    Baseline.findOne({ userId: targetUserId }),
+    DailyLog.find({ userId: targetUserId }).sort({ date: -1 }).limit(14),
+    getMetricsForUser(targetUserId),
   ])
 
   if (!baseline) {

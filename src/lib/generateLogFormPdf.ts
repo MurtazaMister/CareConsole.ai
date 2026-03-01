@@ -328,7 +328,7 @@ export function downloadLogFormPdf(
     doc.setFont('Helvetica', 'normal')
     doc.setFontSize(7.5)
     setColor(doc, MUTED)
-    const footer = `HackRare  \u2022  Page ${i} of ${totalPages}  \u2022  Generated ${today}`
+    const footer = `CareConsole.ai  \u2022  Page ${i} of ${totalPages}  \u2022  Generated ${today}`
     const fw = doc.getTextWidth(footer)
     doc.text(footer, (PAGE_W - fw) / 2, pageH - 11)
   }

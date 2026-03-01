@@ -64,13 +64,6 @@ export default function ClientList({ onSelectPatient }: ClientListProps) {
     )
   }
 
-  // Computed stats
-  const inFlareCount = clients.filter((c) => c.lastFlareRisk === 'high' || c.lastFlareRisk === 'moderate').length
-  const clientsWithScores = clients.filter((c) => c.lastDeviationScore !== null)
-  const avgDeviation = clientsWithScores.length > 0
-    ? Math.round(clientsWithScores.reduce((s, c) => s + (c.lastDeviationScore ?? 0), 0) / clientsWithScores.length)
-    : 0
-
   return (
     <div className="space-y-6">
       {/* Add client search */}
@@ -101,26 +94,6 @@ export default function ClientList({ onSelectPatient }: ClientListProps) {
           <p className="text-red-500 text-xs mt-2">{addError}</p>
         )}
       </div>
-
-      {/* Summary stats bar */}
-      {clients.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white rounded-2xl border border-border p-4 text-center shadow-sm">
-            <p className="text-2xl font-bold text-text">{clients.length}</p>
-            <p className="text-xs text-text-muted">Total Clients</p>
-          </div>
-          <div className="bg-white rounded-2xl border border-border p-4 text-center shadow-sm">
-            <p className={`text-2xl font-bold ${inFlareCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-              {inFlareCount}
-            </p>
-            <p className="text-xs text-text-muted">In Flare</p>
-          </div>
-          <div className="bg-white rounded-2xl border border-border p-4 text-center shadow-sm">
-            <p className="text-2xl font-bold text-text">{avgDeviation}%</p>
-            <p className="text-xs text-text-muted">Avg Deviation</p>
-          </div>
-        </div>
-      )}
 
       {/* Client list */}
       {clients.length === 0 ? (

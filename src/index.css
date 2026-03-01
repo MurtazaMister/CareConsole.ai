@@ -17,9 +17,13 @@
   --color-danger: #ef4444;
 }
 
+.font-brand {
+  font-family: 'DM Serif Display', Georgia, serif;
+}
+
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
   background-color: var(--color-surface);
   color: var(--color-text);
   min-height: 100vh;

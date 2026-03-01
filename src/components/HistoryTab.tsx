@@ -14,9 +14,11 @@ interface HistoryTabProps {
 
 export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
   const { baseline } = useBaseline()
-  const { logs } = useLogs()
+  const { logs, deleteLog } = useLogs()
   const { activeMetrics } = useSchema()
   const [expandedDate, setExpandedDate] = useState<string | null>(null)
+  const [confirmDeleteDate, setConfirmDeleteDate] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   if (!baseline) return null
 
@@ -24,6 +26,19 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
 
   const toggleExpand = (date: string) => {
     setExpandedDate((prev) => (prev === date ? null : date))
+  }
+
+  const handleDeleteLog = async (date: string) => {
+    setDeleting(true)
+    try {
+      await deleteLog(date)
+      setConfirmDeleteDate(null)
+      if (expandedDate === date) setExpandedDate(null)
+    } catch {
+      // keep modal open on error
+    } finally {
+      setDeleting(false)
+    }
   }
 
   /** Read a metric value from a log, checking responses first then legacy field */
@@ -101,6 +116,40 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
                 <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Notes</p>
                 <p className="text-xs text-text">{log.notes}</p>
               </div>
+            )}
+
+            {/* Delete button */}
+            {confirmDeleteDate === log.date ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between">
+                <p className="text-sm text-red-700">Delete log for {new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}?</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteDate(null) }}
+                    disabled={deleting}
+                    className="px-3 py-1.5 text-xs font-medium text-text-muted border border-border rounded-lg hover:bg-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteLog(log.date) }}
+                    disabled={deleting}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
+                  >
+                    {deleting ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmDeleteDate(log.date) }}
+                className="flex items-center gap-1.5 text-xs text-text-muted hover:text-red-500 transition-colors mt-1"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+                Delete this log
+              </button>
             )}
           </div>
         </td>

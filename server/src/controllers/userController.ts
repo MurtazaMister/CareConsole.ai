@@ -1,5 +1,9 @@
 import { Request, Response } from 'express'
 import User from '../models/User'
+import DailyLog from '../models/DailyLog'
+import Baseline from '../models/Baseline'
+import UserSchema from '../models/UserSchema'
+import DoctorClient from '../models/DoctorClient'
 
 const VALID_BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
 
@@ -45,4 +49,21 @@ export async function updateProfile(req: Request, res: Response) {
   }
 
   res.json({ user })
+}
+
+export async function deleteAccount(req: Request, res: Response) {
+  const userId = req.userId
+
+  // Delete all user data in parallel
+  await Promise.all([
+    DailyLog.deleteMany({ userId }),
+    Baseline.deleteOne({ userId }),
+    UserSchema.deleteOne({ userId }),
+    DoctorClient.deleteMany({ $or: [{ doctorId: userId }, { patientId: userId }] }),
+    User.findByIdAndDelete(userId),
+  ])
+
+  // Clear the auth cookie
+  res.clearCookie('token')
+  res.json({ success: true })
 }
