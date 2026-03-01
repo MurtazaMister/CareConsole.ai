@@ -12,6 +12,7 @@
 | Backend | Node.js, Express |
 | Database | MongoDB, Mongoose |
 | Auth | JWT (httpOnly cookies), bcrypt |
+| AI | OpenAI SDK (GPT-4o-mini), server-side proxy |
 
 ## Data Flow
 
@@ -32,6 +33,12 @@ useFlareEngine (frontend-only, no API call)
   reads from: LogsProvider (all logs)
   computes:   Z-Scores, EWMA, composite scores, flare windows
   returns:    FlareEngineResult (used by InsightsTab + chart overlays)
+
+ReportsTab -----generate------> POST /api/ai/generate ---> OpenAI GPT-4o-mini
+  sends: FlareEngineResult summary (client-computed)
+  server fetches: Baseline, DailyLogs, User profile from DB
+  server builds: System prompt + user message
+  returns: { clinicianSummary, plainLanguageSummary, suggestedQuestions }
 ```
 
 ## Authentication
@@ -59,6 +66,19 @@ The flare engine runs **entirely in the frontend**. It takes the baseline profil
 
 See [flare-detection.md](flare-detection.md) for the full algorithm.
 
+## AI Report Generation
+
+The Reports tab calls a backend endpoint that proxies to OpenAI GPT-4o-mini. The split works like this:
+
+- **Frontend sends:** The flare engine summary (currentStatus, trendDirection, flare windows, daily composite scores) — this is already computed client-side
+- **Backend fetches independently:** Baseline profile, recent daily logs (last 14), and user profile from MongoDB — this ensures the AI sees authoritative data, not client-manipulated values
+- **Backend constructs:** A structured system prompt + user message, then calls `openai.chat.completions.create()` with JSON response format
+- **Returns:** Three sections (clinician summary, plain language summary, suggested doctor questions) plus a timestamp and disclaimer
+
+Reports are ephemeral — generated on demand, never stored in the database.
+
+See [ai-reports.md](ai-reports.md) for the full prompt design and data flow.
+
 ## Project Structure
 
 ```
@@ -70,11 +90,12 @@ src/
 │   └── Dashboard.tsx         # Tab shell, fetches data on mount
 │
 ├── components/               # UI components
-│   ├── TabBar.tsx            # 4-tab navigation (overview/log/history/insights)
+│   ├── TabBar.tsx            # 5-tab navigation (log/overview/history/insights/reports)
 │   ├── OverviewTab.tsx       # Today's status + charts + baseline comparison
 │   ├── LogTab.tsx            # 4-step daily logging form
 │   ├── HistoryTab.tsx        # Log table + deviation chart
 │   ├── InsightsTab.tsx       # Flare detection dashboard
+│   ├── ReportsTab.tsx        # AI-powered health reports
 │   ├── RequireAuth.tsx       # Route guard
 │   ├── MiniSlider.tsx        # 0-10 symptom slider with baseline badge
 │   ├── LikertScale.tsx       # 1-5 sleep quality selector
@@ -90,13 +111,16 @@ src/
 │   │   ├── SymptomRadarChart.tsx    # Today vs baseline spider chart
 │   │   └── SleepChart.tsx           # Bar (hours) + line (quality)
 │   │
-│   └── insights/             # Flare detection UI
-│       ├── FlareStatusBanner.tsx    # Current status + score ring
-│       ├── FlareSummaryCards.tsx     # 4-card stats grid
-│       ├── CompositeScoreChart.tsx   # Composite score + threshold lines
-│       ├── SymptomEWMAChart.tsx      # Per-symptom smoothed trends
-│       ├── FlareTimeline.tsx        # Horizontal timeline bar
-│       └── FlareEventCard.tsx       # "Why was this flagged?" cards
+│   ├── insights/             # Flare detection UI
+│   │   ├── FlareStatusBanner.tsx    # Current status + score ring
+│   │   ├── FlareSummaryCards.tsx     # 4-card stats grid
+│   │   ├── CompositeScoreChart.tsx   # Composite score + threshold lines
+│   │   ├── SymptomEWMAChart.tsx      # Per-symptom smoothed trends
+│   │   ├── FlareTimeline.tsx        # Horizontal timeline bar
+│   │   └── FlareEventCard.tsx       # "Why was this flagged?" cards
+│   │
+│   └── reports/              # AI report UI
+│       └── ReportSection.tsx        # Reusable card with copy button
 │
 ├── lib/
 │   └── flareEngine.ts        # Pure computation: Z-Score, EWMA, flare windows
@@ -106,7 +130,8 @@ src/
 │   ├── useBaseline.ts
 │   ├── useLogs.ts
 │   ├── useFilteredLogs.ts    # Filter logs by date range
-│   └── useFlareEngine.ts     # Memoized flare detection hook
+│   ├── useFlareEngine.ts     # Memoized flare detection hook
+│   └── useAIReport.ts        # AI report generation state machine
 │
 ├── context/
 │   ├── AuthProvider.tsx / authContext.ts
@@ -116,7 +141,8 @@ src/
 ├── types/
 │   ├── user.ts               # UserAccount, UserProfile, validation
 │   ├── baseline.ts           # BaselineProfile, SYMPTOM_METRICS
-│   └── dailyLog.ts           # DailyLog, calculateDeviation, helpers
+│   ├── dailyLog.ts           # DailyLog, calculateDeviation, helpers
+│   └── aiReport.ts           # AIReportRequest, AIReport interfaces
 │
 ├── constants/
 │   ├── chartTheme.ts         # Shared chart styling, colors, date ranges
@@ -141,13 +167,15 @@ server/src/
 │   ├── authController.ts     # signup, login, me, logout
 │   ├── userController.ts     # saveProfile
 │   ├── baselineController.ts # getBaseline, upsertBaseline
-│   └── logsController.ts     # getLogs, getLogByDate, createOrUpdateLog
+│   ├── logsController.ts     # getLogs, getLogByDate, createOrUpdateLog
+│   └── aiController.ts       # generateReport (OpenAI GPT-4o-mini)
 │
 ├── routes/
 │   ├── auth.ts               # POST signup/login/logout, GET me
 │   ├── user.ts               # PUT profile
 │   ├── baseline.ts           # GET/PUT baseline
-│   └── logs.ts               # GET/POST logs, GET logs/:date
+│   ├── logs.ts               # GET/POST logs, GET logs/:date
+│   └── ai.ts                 # POST generate
 │
 ├── middleware/
 │   ├── auth.ts               # JWT verification, extracts userId
@@ -197,3 +225,4 @@ Sum of absolute differences between daily values and baseline across the 4 core 
 | GET | /api/logs | Yes | Get all user's logs |
 | POST | /api/logs | Yes | Create/update log for a date |
 | GET | /api/logs/:date | Yes | Get log for specific date |
+| POST | /api/ai/generate | Yes | Generate AI health report (GPT-4o-mini) |

@@ -73,3 +73,24 @@
   - Event detail cards with "Why was this flagged?" explainability
 - **Flare window overlays** on existing Overview charts (SymptomTrendChart, DeviationTrendChart)
 - `useFlareEngine` hook for memoized computation
+
+## Phase 9: AI-Powered Reports Tab -- COMPLETE
+
+- **OpenAI integration** via GPT-4o-mini (server-side proxy, API key stays on backend)
+- **Backend endpoint:** `POST /api/ai/generate` — receives client-computed flare analysis, fetches baseline + logs + profile from DB, constructs structured prompt, calls GPT-4o-mini with JSON mode
+- **New "Reports" tab** with 4 render states:
+  - Empty state (< 3 logs, prompts user to log more)
+  - Idle state (explains what the report includes, "Generate Report" button)
+  - Loading state (skeleton cards with pulse animation)
+  - Success state (3 rendered report sections + export controls)
+- **Three AI-generated sections:**
+  - Clinician Summary — structured clinical report with specific numbers, suitable for sharing with healthcare providers
+  - What's Happening — plain-language patient-friendly interpretation (3-5 sentences)
+  - Questions for Your Doctor — 3-5 context-aware questions referencing patient data
+- **Export functionality:**
+  - Per-section copy to clipboard with visual feedback
+  - Copy All button (all 3 sections in one clipboard action)
+  - Download as `.txt` file
+  - Regenerate button for fresh report
+- **Security:** API key server-side only, auth required, server fetches authoritative data from DB
+- **Prompt engineering:** Low temperature (0.3) for consistent output, structured system prompt with word limits, JSON response format enforced

@@ -64,6 +64,19 @@ The flare detection dashboard. This is where the statistical analysis lives.
   - Collapsed: date range, duration, severity badge, peak score
   - Expanded: "Why was this flagged?" explanation, contributing symptom bars with percentages, day-by-day score table, and any notes from that period
 
+### Reports
+
+AI-powered health reports you can share with your healthcare provider. Uses OpenAI GPT-4o-mini under the hood.
+
+- **Generate Report** — One button generates a comprehensive report from your symptom data, flare analysis, baseline, and medical profile. Takes a few seconds
+- **Clinician Summary** — A structured clinical summary with specific numbers, symptom trends, sleep analysis, and alerts. Written in appropriate medical terminology, ready to share with a doctor
+- **What's Happening** — A short, warm, plain-language explanation of your recent trends. No jargon, just "here's what your data shows"
+- **Questions for Your Doctor** — 3-5 context-aware questions based on your actual data. Each question references specific numbers (e.g., "My pain has averaged 6.2/10 vs my baseline of 3/10..."). Helps you advocate for yourself at appointments
+- **Copy & Export** — Copy individual sections or everything at once. Download the full report as a `.txt` file. Regenerate anytime for a fresh analysis
+- **Privacy** — Your OpenAI API key stays on the server. The AI never stores your data. Reports are generated on-demand and not saved to the database
+
+The Reports tab requires at least 3 days of logged data to generate a report (same minimum as the Insights tab).
+
 ---
 
 ## Onboarding

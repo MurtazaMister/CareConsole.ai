@@ -71,21 +71,19 @@ The system should feel:
 
 ## Current Phase
 
-**Phase 1 – Baseline Setup Dashboard** ✅ COMPLETE
+All 9 phases are complete:
 
-**Phase 2 – Daily Logging Dashboard** ✅ COMPLETE
-
-This includes:
-
-* Daily symptom logging with rich clinical data (symptoms, pain locations, medication adherence, functional impact, triggers, timing)
-* Baseline deviation comparison with real-time flare risk calculation
-* Log history view with expandable details
-* SVG trend chart for deviation scores
-* JSON data export throughout
-
-No backend or AI logic is included yet.
+1. **Baseline Setup** — 4-step onboarding wizard
+2. **Daily Logging** — Multi-step log form with date picker
+3. **Dashboard & Visualization** — Tabbed dashboard with Overview and History
+4. **Authentication & Profile** — Express + MongoDB backend, JWT auth, medical profile
+5. **Interactive Charts** — Recharts: symptom trends, deviation, radar, sleep
+6. **Risk Label Removal** — Neutral language throughout
+7. **Seed Data** — 5 test users with realistic disease patterns
+8. **Flare Detection & Insights** — Z-Score + EWMA + composite scoring engine, Insights tab
+9. **AI Reports** — GPT-4o-mini clinician summaries, plain-language insights, doctor questions
 
 ---
 
 This document provides context only.
-All feature implementation details must follow `plan.md` exactly as defined by the user.
+See `docs/` for detailed documentation: features, architecture, flare detection algorithm, AI reports, and development progress.
