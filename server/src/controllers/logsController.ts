@@ -97,8 +97,8 @@ export async function createOrUpdateLog(req: Request, res: Response) {
   }
 
   // Validate notes
-  if (notes && typeof notes === 'string' && notes.length > 150) {
-    res.status(400).json({ error: 'Notes must be 150 characters or less' })
+  if (notes && typeof notes !== 'string') {
+    res.status(400).json({ error: 'Notes must be a string' })
     return
   }
 

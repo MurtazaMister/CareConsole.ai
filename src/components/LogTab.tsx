@@ -474,13 +474,11 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
             </label>
             <textarea
               value={form.notes}
-              onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value.slice(0, 150) }))}
+              onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
               placeholder="Brief note for your doctor..."
-              maxLength={150}
               className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-text placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none transition-all"
               rows={2}
             />
-            <p className="text-right text-[10px] text-text-muted mt-1">{form.notes.length}/150</p>
           </div>
         </div>
       )}

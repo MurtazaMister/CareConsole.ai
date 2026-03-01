@@ -38,7 +38,7 @@ const DailyLogSchema = new Schema<IDailyLog>({
   sleepQuality: { type: Number, required: true, min: 1, max: 5 },
   bedtime: { type: String, required: true, match: /^\d{2}:\d{2}$/ },
   wakeTime: { type: String, required: true, match: /^\d{2}:\d{2}$/ },
-  notes: { type: String, default: '', maxlength: 150 },
+  notes: { type: String, default: '' },
   deviationScore: { type: Number, required: true },
   flareRiskLevel: { type: String, enum: ['low', 'medium', 'high'], required: true },
 }, { timestamps: { createdAt: true, updatedAt: false } })
