@@ -1,17 +1,19 @@
-import { SYMPTOM_METRICS } from '../../types/baseline'
+import { useEffect } from 'react'
 import { FLARE_LEVEL_CONFIG } from '../../constants/flareTheme'
-import type { FlareWindow, DayAnalysis, SymptomKey } from '../../lib/flareEngine'
+import type { FlareWindow, DayAnalysis } from '../../lib/flareEngine'
+import type { FlareExplanationState } from '../../types/flareExplanation'
+import type { MetricDefinition } from '../../types/schema'
+import AISparkleLoader from './AISparkleLoader'
 
 interface FlareEventCardProps {
   window: FlareWindow
   dailyAnalysis: DayAnalysis[]
   isExpanded: boolean
   onToggle: () => void
+  explanationState: FlareExplanationState
+  onRequestExplanation: () => void
+  metrics: MetricDefinition[]
 }
-
-const SYMPTOM_COLOR_MAP = Object.fromEntries(
-  SYMPTOM_METRICS.map((m) => [m.key, m.color]),
-) as Record<SymptomKey, string>
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
@@ -25,9 +27,15 @@ export default function FlareEventCard({
   dailyAnalysis,
   isExpanded,
   onToggle,
+  explanationState,
+  onRequestExplanation,
+  metrics,
 }: FlareEventCardProps) {
   const peakConfig = FLARE_LEVEL_CONFIG[fw.peakLevel]
   const peakDay = dailyAnalysis.find((d) => d.date === fw.peakDate)
+
+  // Build color map from dynamic metrics
+  const colorMap = Object.fromEntries(metrics.map((m) => [m.key, m.color]))
 
   // Get the dominant and secondary contributors from the peak day
   const topContributors = peakDay?.contributingSymptoms.slice(0, 2) ?? []
@@ -42,6 +50,13 @@ export default function FlareEventCard({
     topContributors.length >= 2
       ? `${dominantLabel} and ${secondLabel} drove this ${fw.durationDays}-day ${peakConfig.label.toLowerCase()}`
       : `${dominantLabel} drove this ${fw.durationDays}-day ${peakConfig.label.toLowerCase()}`
+
+  // Trigger AI explanation fetch when expanded
+  useEffect(() => {
+    if (isExpanded && explanationState.status === 'idle') {
+      onRequestExplanation()
+    }
+  }, [isExpanded, explanationState.status, onRequestExplanation])
 
   return (
     <div className="bg-white rounded-2xl border border-border overflow-hidden">
@@ -92,13 +107,31 @@ export default function FlareEventCard({
           {/* Why was this flagged? */}
           <div>
             <h4 className="text-sm font-semibold text-text mb-2">Why was this flagged?</h4>
-            <p className="text-sm text-text-muted mb-3">
-              Your composite flare score exceeded the threshold for{' '}
-              <span className="font-medium" style={{ color: peakConfig.color }}>
-                {fw.durationDays} consecutive days
-              </span>
-              , indicating a sustained increase in symptom severity compared to your baseline.
-            </p>
+            {explanationState.status === 'success' ? (
+              <p className="text-sm text-text-muted mb-3">{explanationState.data.explanation}</p>
+            ) : explanationState.status === 'loading' ? (
+              <div className="mb-3">
+                <AISparkleLoader />
+              </div>
+            ) : explanationState.status === 'error' ? (
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-sm text-danger">{explanationState.error}</p>
+                <button
+                  onClick={onRequestExplanation}
+                  className="text-xs font-medium text-primary hover:text-primary-dark transition-colors flex-shrink-0"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-text-muted mb-3">
+                Your composite flare score exceeded the threshold for{' '}
+                <span className="font-medium" style={{ color: peakConfig.color }}>
+                  {fw.durationDays} consecutive days
+                </span>
+                , indicating a sustained increase in symptom severity compared to your baseline.
+              </p>
+            )}
 
             {/* Contributing symptoms bars */}
             <div className="space-y-2">
@@ -116,7 +149,7 @@ export default function FlareEventCard({
                         className="h-full rounded-full transition-all duration-500"
                         style={{
                           width: `${pct}%`,
-                          backgroundColor: SYMPTOM_COLOR_MAP[cs.key],
+                          backgroundColor: colorMap[cs.key] ?? '#6366f1',
                         }}
                       />
                     </div>

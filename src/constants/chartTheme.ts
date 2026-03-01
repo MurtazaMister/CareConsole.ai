@@ -1,21 +1,35 @@
-import { SYMPTOM_METRICS } from '../types/baseline'
+import type { MetricDefinition } from '../types/schema'
 
-// ── Date Range Presets ───────────────────────────────────
+// ── Date Range ───────────────────────────────────────────
 
-export type DateRangeKey = '7d' | '14d' | '30d' | 'all'
+export type DateRangePreset = '1w' | '1m' | '1y' | 'custom'
 
-export const DATE_RANGE_PRESETS: { key: DateRangeKey; label: string; days: number | null }[] = [
-  { key: '7d', label: '7 Days', days: 7 },
-  { key: '14d', label: '14 Days', days: 14 },
-  { key: '30d', label: '30 Days', days: 30 },
-  { key: 'all', label: 'All', days: null },
+export interface DateRange {
+  preset: DateRangePreset
+  /** Total days to show. null = all-time */
+  days: number | null
+}
+
+export const PRESET_OPTIONS: { key: DateRangePreset; label: string; days: number | null }[] = [
+  { key: '1w', label: '1W', days: 7 },
+  { key: '1m', label: '1M', days: 30 },
+  { key: '1y', label: '1Y', days: 365 },
 ]
 
-// ── Metric Colors (from SYMPTOM_METRICS) ─────────────────
+export type CustomUnit = 'D' | 'W' | 'M' | 'Y'
 
-export const METRIC_COLORS: Record<string, string> = Object.fromEntries(
-  SYMPTOM_METRICS.map((m) => [m.key, m.color]),
-)
+export const CUSTOM_UNITS: { key: CustomUnit; label: string; multiplier: number }[] = [
+  { key: 'D', label: 'D', multiplier: 1 },
+  { key: 'W', label: 'W', multiplier: 7 },
+  { key: 'M', label: 'M', multiplier: 30 },
+  { key: 'Y', label: 'Y', multiplier: 365 },
+]
+
+// ── Metric Colors (dynamic) ─────────────────────────────
+
+export function buildMetricColors(metrics: MetricDefinition[]): Record<string, string> {
+  return Object.fromEntries(metrics.map((m) => [m.key, m.color]))
+}
 
 // ── Shared Chart Styling ─────────────────────────────────
 

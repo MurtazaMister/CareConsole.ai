@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import Baseline from '../models/Baseline'
+import UserSchema from '../models/UserSchema'
 import { validateDateString, validateTimeString } from '../middleware/validate'
 
 export async function getBaseline(req: Request, res: Response) {
@@ -16,14 +17,12 @@ export async function upsertBaseline(req: Request, res: Response) {
     primaryCondition,
     conditionDurationMonths,
     baselineDate,
-    painLevel,
-    fatigueLevel,
-    breathingDifficulty,
-    functionalLimitation,
     sleepHours,
     sleepQuality,
     usualBedtime,
     usualWakeTime,
+    responses,
+    finalMetrics,
   } = req.body
 
   if (!primaryCondition || typeof primaryCondition !== 'string' || !primaryCondition.trim()) {
@@ -39,16 +38,28 @@ export async function upsertBaseline(req: Request, res: Response) {
     return
   }
 
-  // Validate symptoms (0-10)
-  for (const [key, val] of Object.entries({ painLevel, fatigueLevel, breathingDifficulty, functionalLimitation })) {
-    if (typeof val !== 'number' || val < 0 || val > 10) {
-      res.status(400).json({ error: `${key} must be between 0 and 10` })
-      return
+  // Get active metrics from UserSchema or from request body
+  let activeMetrics: string[] = finalMetrics || []
+  if (activeMetrics.length === 0) {
+    const userSchema = await UserSchema.findOne({ userId: req.userId })
+    if (userSchema) {
+      activeMetrics = userSchema.finalMetrics
     }
   }
 
-  if (typeof sleepHours !== 'number' || sleepHours < 3 || sleepHours > 12) {
-    res.status(400).json({ error: 'Sleep hours must be between 3 and 12' })
+  // Validate symptom responses dynamically
+  if (responses && typeof responses === 'object') {
+    for (const key of activeMetrics) {
+      const val = responses[key]
+      if (typeof val !== 'number' || val < 0 || val > 10) {
+        res.status(400).json({ error: `${key} must be between 0 and 10` })
+        return
+      }
+    }
+  }
+
+  if (typeof sleepHours !== 'number' || sleepHours < 0 || sleepHours > 24) {
+    res.status(400).json({ error: 'Sleep hours must be between 0 and 24' })
     return
   }
   if (typeof sleepQuality !== 'number' || sleepQuality < 1 || sleepQuality > 5) {
@@ -71,14 +82,12 @@ export async function upsertBaseline(req: Request, res: Response) {
       primaryCondition: primaryCondition.trim(),
       conditionDurationMonths,
       baselineDate,
-      painLevel,
-      fatigueLevel,
-      breathingDifficulty,
-      functionalLimitation,
+      finalMetrics: activeMetrics,
       sleepHours,
       sleepQuality,
       usualBedtime,
       usualWakeTime,
+      responses: responses && typeof responses === 'object' ? responses : {},
     },
     { upsert: true, new: true, runValidators: true },
   )

@@ -3,8 +3,9 @@ import type { Tab } from './TabBar'
 import type { AIReportRequest } from '../types/aiReport'
 import { useFlareEngine } from '../hooks/useFlareEngine'
 import { useAIReport } from '../hooks/useAIReport'
-import { SYMPTOM_METRICS } from '../types/baseline'
+import { useSchema } from '../hooks/useSchema'
 import ReportSection from './reports/ReportSection'
+import { downloadReportPdf } from '../lib/generateReportPdf'
 
 interface ReportsTabProps {
   onSwitchTab: (tab: Tab) => void
@@ -12,6 +13,7 @@ interface ReportsTabProps {
 
 export default function ReportsTab({ onSwitchTab }: ReportsTabProps) {
   const flareResult = useFlareEngine()
+  const { activeMetrics } = useSchema()
   const { state, generateReport, reset } = useAIReport()
   const [copyAllFeedback, setCopyAllFeedback] = useState(false)
 
@@ -19,7 +21,7 @@ export default function ReportsTab({ onSwitchTab }: ReportsTabProps) {
     if (!flareResult) return
 
     const symLabel = (key: string) =>
-      SYMPTOM_METRICS.find((m) => m.key === key)?.label ?? key
+      activeMetrics.find((m) => m.key === key)?.label ?? key
 
     const payload: AIReportRequest = {
       flareSummary: {
@@ -62,10 +64,6 @@ export default function ReportsTab({ onSwitchTab }: ReportsTabProps) {
     if (state.status !== 'success') return
     const { report } = state
     const text = [
-      'CLINICIAN SUMMARY',
-      '='.repeat(40),
-      report.clinicianSummary,
-      '',
       "WHAT'S HAPPENING",
       '='.repeat(40),
       report.plainLanguageSummary,
@@ -73,6 +71,10 @@ export default function ReportsTab({ onSwitchTab }: ReportsTabProps) {
       'QUESTIONS FOR YOUR DOCTOR',
       '='.repeat(40),
       ...report.suggestedQuestions.map((q, i) => `${i + 1}. ${q}`),
+      '',
+      'CLINICIAN SUMMARY',
+      '='.repeat(40),
+      report.clinicianSummary,
       '',
       '---',
       report.disclaimer,
@@ -85,31 +87,7 @@ export default function ReportsTab({ onSwitchTab }: ReportsTabProps) {
 
   const downloadReport = () => {
     if (state.status !== 'success') return
-    const { report } = state
-    const text = [
-      'CLINICIAN SUMMARY',
-      '='.repeat(40),
-      report.clinicianSummary,
-      '',
-      "WHAT'S HAPPENING",
-      '='.repeat(40),
-      report.plainLanguageSummary,
-      '',
-      'QUESTIONS FOR YOUR DOCTOR',
-      '='.repeat(40),
-      ...report.suggestedQuestions.map((q, i) => `${i + 1}. ${q}`),
-      '',
-      '---',
-      report.disclaimer,
-      `Generated: ${new Date(report.generatedAt).toLocaleString()}`,
-    ].join('\n')
-    const blob = new Blob([text], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `health-report-${report.generatedAt.split('T')[0]}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadReportPdf(state.report)
   }
 
   // Not enough data
@@ -191,19 +169,37 @@ export default function ReportsTab({ onSwitchTab }: ReportsTabProps) {
 
   // Loading state
   if (state.status === 'loading') {
+    const loadingSections = [
+      { label: 'Analyzing symptoms...', delay: '0s' },
+      { label: 'Preparing questions...', delay: '0.3s' },
+      { label: 'Writing clinical summary...', delay: '0.6s' },
+    ]
+
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <p className="text-sm font-medium text-text">Generating your report...</p>
-        </div>
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="bg-white rounded-2xl border border-border p-5 space-y-3">
-            <div className="h-4 bg-gray-200 rounded animate-pulse w-1/3" />
-            <div className="space-y-2">
+        {loadingSections.map((section, i) => (
+          <div
+            key={i}
+            className="bg-white rounded-2xl border border-border px-5 py-4 animate-fade-in"
+            style={{ animationDelay: section.delay, animationFillMode: 'backwards' }}
+          >
+            <div className="flex items-center gap-3">
+              <svg
+                className="ai-sparkle w-5 h-5 text-primary flex-shrink-0"
+                style={{ animationDelay: section.delay }}
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8L12 2z" />
+              </svg>
+              <span className="ai-shimmer-text text-sm font-medium">
+                {section.label}
+              </span>
+            </div>
+            <div className="mt-3 space-y-2">
               <div className="h-3 bg-gray-100 rounded animate-pulse w-full" />
               <div className="h-3 bg-gray-100 rounded animate-pulse w-5/6" />
-              <div className="h-3 bg-gray-100 rounded animate-pulse w-4/6" />
+              <div className="h-3 bg-gray-100 rounded animate-pulse w-3/5" />
             </div>
           </div>
         ))}
@@ -295,19 +291,6 @@ export default function ReportsTab({ onSwitchTab }: ReportsTabProps) {
         </div>
       </div>
 
-      {/* Clinician Summary */}
-      <ReportSection
-        title="Clinician Summary"
-        icon={
-          <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        }
-        onCopy={() => copyToClipboard(report.clinicianSummary)}
-      >
-        <div className="whitespace-pre-wrap">{report.clinicianSummary}</div>
-      </ReportSection>
-
       {/* What's Happening */}
       <ReportSection
         title="What's Happening"
@@ -336,6 +319,21 @@ export default function ReportsTab({ onSwitchTab }: ReportsTabProps) {
             <li key={i} className="leading-relaxed">{question}</li>
           ))}
         </ol>
+      </ReportSection>
+
+      {/* Clinician Summary */}
+      <ReportSection
+        title="Clinician Summary"
+        subtitle="Share this with your healthcare provider"
+        icon={
+          <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        }
+        onCopy={() => copyToClipboard(report.clinicianSummary)}
+        defaultCollapsed
+      >
+        <div className="whitespace-pre-wrap">{report.clinicianSummary}</div>
       </ReportSection>
 
       {/* Regenerate + Disclaimer */}

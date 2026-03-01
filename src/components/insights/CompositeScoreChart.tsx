@@ -129,7 +129,7 @@ export default function CompositeScoreChart({ dailyAnalysis, flareWindows }: Com
           stroke="#6366f1"
           strokeWidth={2.5}
           fill="url(#compositeGradient)"
-          dot={{ r: 3, fill: '#6366f1', strokeWidth: 2, stroke: 'white' }}
+          dot={false}
           activeDot={{ r: 6, strokeWidth: 2, stroke: '#6366f1', fill: 'white' }}
         />
       </AreaChart>

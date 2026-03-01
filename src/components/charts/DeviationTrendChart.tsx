@@ -96,7 +96,7 @@ export default function DeviationTrendChart({ logs, flareWindows }: DeviationTre
           stroke="#6366f1"
           strokeWidth={2.5}
           fill="url(#devGradient)"
-          dot={{ r: 3, fill: '#6366f1', strokeWidth: 2, stroke: 'white' }}
+          dot={false}
           activeDot={{ r: 6, strokeWidth: 2, stroke: '#6366f1', fill: 'white' }}
         />
       </AreaChart>

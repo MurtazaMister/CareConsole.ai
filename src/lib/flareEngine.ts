@@ -1,27 +1,21 @@
 import type { BaselineProfile } from '../types/baseline'
 import type { DailyLog } from '../types/dailyLog'
-import { SYMPTOM_METRICS } from '../types/baseline'
+import type { MetricDefinition } from '../types/schema'
 
 // ── Types ────────────────────────────────────────────────────
-
-export type SymptomKey =
-  | 'painLevel'
-  | 'fatigueLevel'
-  | 'breathingDifficulty'
-  | 'functionalLimitation'
 
 export type FlareLevel = 'none' | 'watch' | 'mild' | 'severe'
 
 export interface DayAnalysis {
   date: string
-  zScores: Record<SymptomKey, number>
-  positiveZ: Record<SymptomKey, number>
-  ewma: Record<SymptomKey, number>
+  zScores: Record<string, number>
+  positiveZ: Record<string, number>
+  ewma: Record<string, number>
   compositeScore: number
   rawFlareLevel: FlareLevel
   validatedFlareLevel: FlareLevel
   contributingSymptoms: {
-    key: SymptomKey
+    key: string
     label: string
     zScore: number
     ewma: number
@@ -41,7 +35,7 @@ export interface FlareWindow {
   escalationDate?: string
   durationDays: number
   avgScore: number
-  dominantSymptom: SymptomKey
+  dominantSymptom: string
   triggerNotes: string[]
 }
 
@@ -49,8 +43,8 @@ export interface FlareEngineResult {
   dailyAnalysis: DayAnalysis[]
   flareWindows: FlareWindow[]
   baselineStats: {
-    means: Record<SymptomKey, number>
-    stdDevs: Record<SymptomKey, number>
+    means: Record<string, number>
+    stdDevs: Record<string, number>
     logCount: number
   }
   summary: {
@@ -59,30 +53,28 @@ export interface FlareEngineResult {
     severeFlareDays: number
     currentStatus: FlareLevel
     currentStreak: number
-    worstSymptom: SymptomKey
+    worstSymptom: string
     averageCompositeScore: number
     trendDirection: 'improving' | 'stable' | 'worsening'
   }
 }
 
+// ── Default metrics (empty — all metrics now come from schema) ──
+
 // ── Constants ────────────────────────────────────────────────
-
-export const SYMPTOM_KEYS: SymptomKey[] = [
-  'painLevel',
-  'fatigueLevel',
-  'breathingDifficulty',
-  'functionalLimitation',
-]
-
-export const FLARE_WEIGHTS: Record<SymptomKey, number> = {
-  painLevel: 0.3,
-  fatigueLevel: 0.25,
-  breathingDifficulty: 0.25,
-  functionalLimitation: 0.2,
-}
 
 export const EWMA_ALPHA = 0.3
 export const STD_DEV_FLOOR = 0.75
+
+// Thresholds calibrated for weighted-average composite (weights sum to 1.0).
+export const COMPOSITE_THRESHOLDS = {
+  watch: 0.8,
+  mild: 1.5,
+  severe: 2.5,
+}
+
+// Flare window closes when composite stays below this for 2 consecutive days
+export const FLARE_EXIT_THRESHOLD = 0.5
 
 // ── Pure computation functions ───────────────────────────────
 
@@ -109,27 +101,6 @@ export function computeEWMA(
   return alpha * currentPositiveZ + (1 - alpha) * previousEWMA
 }
 
-export function computeCompositeScore(
-  ewmaValues: Record<SymptomKey, number>,
-): number {
-  return SYMPTOM_KEYS.reduce(
-    (sum, key) => sum + ewmaValues[key] * FLARE_WEIGHTS[key],
-    0,
-  )
-}
-
-// Thresholds calibrated for weighted-average composite (weights sum to 1.0).
-// A composite of 1.5 means the average EWMA across symptoms is ~1.5 std devs
-// above baseline — clinically significant for rare disease patients.
-export const COMPOSITE_THRESHOLDS = {
-  watch: 0.8,
-  mild: 1.5,
-  severe: 2.5,
-}
-
-// Flare window closes when composite stays below this for 2 consecutive days
-export const FLARE_EXIT_THRESHOLD = 0.5
-
 export function classifyRawFlareLevel(compositeScore: number): FlareLevel {
   if (compositeScore >= COMPOSITE_THRESHOLDS.severe) return 'severe'
   if (compositeScore >= COMPOSITE_THRESHOLDS.mild) return 'mild'
@@ -144,57 +115,87 @@ const FLARE_RANK: Record<FlareLevel, number> = {
   severe: 3,
 }
 
-function buildContributingSymptoms(
-  ewma: Record<SymptomKey, number>,
-  zScores: Record<SymptomKey, number>,
-) {
-  const metricLabelMap = Object.fromEntries(
-    SYMPTOM_METRICS.map((m) => [m.key, m.label]),
-  )
-  return SYMPTOM_KEYS.map((key) => ({
-    key,
-    label: metricLabelMap[key] || key,
-    zScore: zScores[key],
-    ewma: ewma[key],
-    weight: FLARE_WEIGHTS[key],
-    contribution: ewma[key] * FLARE_WEIGHTS[key],
-  })).sort((a, b) => b.contribution - a.contribution)
+// ── Helper to read a metric value from a log ─────────────────
+
+function readLogValue(log: DailyLog, key: string): number {
+  const fromResponses = log.responses?.[key]
+  if (typeof fromResponses === 'number') return fromResponses
+  // Fallback to legacy top-level field
+  const legacy = (log as Record<string, unknown>)[key]
+  return typeof legacy === 'number' ? legacy : 0
+}
+
+function readBaselineValue(baseline: BaselineProfile, key: string | undefined): number {
+  if (!key) return 0
+  const fromResponses = baseline.responses?.[key]
+  if (typeof fromResponses === 'number') return fromResponses
+  const legacy = (baseline as Record<string, unknown>)[key]
+  return typeof legacy === 'number' ? legacy : 0
 }
 
 // ── Multi-day analysis ───────────────────────────────────────
 
+function computeCompositeScore(
+  ewmaValues: Record<string, number>,
+  keys: string[],
+  weights: Record<string, number>,
+): number {
+  return keys.reduce(
+    (sum, key) => sum + ewmaValues[key] * weights[key],
+    0,
+  )
+}
+
+function buildContributingSymptoms(
+  ewma: Record<string, number>,
+  zScores: Record<string, number>,
+  metrics: MetricDefinition[],
+) {
+  return metrics.map((m) => ({
+    key: m.key,
+    label: m.label,
+    zScore: zScores[m.key],
+    ewma: ewma[m.key],
+    weight: m.weight,
+    contribution: ewma[m.key] * m.weight,
+  })).sort((a, b) => b.contribution - a.contribution)
+}
+
 function computeDailyAnalysis(
   sortedLogs: DailyLog[],
-  means: Record<SymptomKey, number>,
-  stdDevs: Record<SymptomKey, number>,
+  means: Record<string, number>,
+  stdDevs: Record<string, number>,
+  metrics: MetricDefinition[],
 ): DayAnalysis[] {
   const results: DayAnalysis[] = []
+  const keys = metrics.map((m) => m.key)
+  const weights = Object.fromEntries(metrics.map((m) => [m.key, m.weight]))
 
   for (let i = 0; i < sortedLogs.length; i++) {
     const log = sortedLogs[i]
 
     // Z-scores
-    const zScores = {} as Record<SymptomKey, number>
-    const positiveZ = {} as Record<SymptomKey, number>
-    for (const key of SYMPTOM_KEYS) {
-      zScores[key] = computeZScore(log[key], means[key], stdDevs[key])
+    const zScores: Record<string, number> = {}
+    const positiveZ: Record<string, number> = {}
+    for (const key of keys) {
+      zScores[key] = computeZScore(readLogValue(log, key), means[key], stdDevs[key])
       positiveZ[key] = Math.max(0, zScores[key])
     }
 
     // EWMA
-    const ewma = {} as Record<SymptomKey, number>
+    const ewma: Record<string, number> = {}
     if (i === 0) {
-      for (const key of SYMPTOM_KEYS) {
+      for (const key of keys) {
         ewma[key] = positiveZ[key]
       }
     } else {
       const prev = results[i - 1]
-      for (const key of SYMPTOM_KEYS) {
+      for (const key of keys) {
         ewma[key] = computeEWMA(positiveZ[key], prev.ewma[key])
       }
     }
 
-    const compositeScore = computeCompositeScore(ewma)
+    const compositeScore = computeCompositeScore(ewma, keys, weights)
     const rawFlareLevel = classifyRawFlareLevel(compositeScore)
 
     results.push({
@@ -204,8 +205,8 @@ function computeDailyAnalysis(
       ewma,
       compositeScore,
       rawFlareLevel,
-      validatedFlareLevel: rawFlareLevel, // will be overwritten by validation
-      contributingSymptoms: buildContributingSymptoms(ewma, zScores),
+      validatedFlareLevel: rawFlareLevel,
+      contributingSymptoms: buildContributingSymptoms(ewma, zScores, metrics),
     })
   }
 
@@ -220,7 +221,6 @@ export function validateFlareLevels(days: DayAnalysis[]): DayAnalysis[] {
       continue
     }
 
-    // For mild/severe: need at least one adjacent day also at that raw level or higher
     const rawRank = FLARE_RANK[raw]
     const prevOk =
       i > 0 && FLARE_RANK[days[i - 1].rawFlareLevel] >= rawRank
@@ -240,6 +240,7 @@ export function validateFlareLevels(days: DayAnalysis[]): DayAnalysis[] {
 export function identifyFlareWindows(
   days: DayAnalysis[],
   logs: DailyLog[],
+  metrics: MetricDefinition[],
 ): FlareWindow[] {
   const windows: FlareWindow[] = []
   let windowStart = -1
@@ -250,20 +251,17 @@ export function identifyFlareWindows(
     const level = days[i].validatedFlareLevel
 
     if (windowStart === -1) {
-      // Not in a window — check if one starts
       if (level === 'mild' || level === 'severe') {
         windowStart = i
         belowCount = 0
       }
     } else {
-      // In a window — check if it ends
       if (days[i].compositeScore < FLARE_EXIT_THRESHOLD) {
         belowCount++
         if (belowCount >= 2) {
-          // Close window — end is 2 days before current
           const endIdx = i - 2
           windows.push(
-            buildFlareWindow(windowId++, days, logs, windowStart, endIdx),
+            buildFlareWindow(windowId++, days, logs, windowStart, endIdx, metrics),
           )
           windowStart = -1
           belowCount = 0
@@ -274,7 +272,6 @@ export function identifyFlareWindows(
     }
   }
 
-  // If still in a window at the end, close it as ongoing
   if (windowStart !== -1) {
     windows.push(
       buildFlareWindow(
@@ -283,6 +280,7 @@ export function identifyFlareWindows(
         logs,
         windowStart,
         days.length - 1,
+        metrics,
         true,
       ),
     )
@@ -297,12 +295,12 @@ function buildFlareWindow(
   logs: DailyLog[],
   startIdx: number,
   endIdx: number,
+  metrics: MetricDefinition[],
   ongoing: boolean = false,
 ): FlareWindow {
   const windowDays = days.slice(startIdx, endIdx + 1)
   const windowLogs = logs.slice(startIdx, endIdx + 1)
 
-  // Find peak
   let peakIdx = 0
   for (let i = 1; i < windowDays.length; i++) {
     if (windowDays[i].compositeScore > windowDays[peakIdx].compositeScore) {
@@ -310,7 +308,6 @@ function buildFlareWindow(
     }
   }
 
-  // Check for escalation (mild → severe)
   let escalated = false
   let escalationDate: string | undefined
   let seenMild = false
@@ -324,22 +321,18 @@ function buildFlareWindow(
   }
 
   // Determine dominant symptom (highest average EWMA contribution)
-  const avgContribution: Record<SymptomKey, number> = {
-    painLevel: 0,
-    fatigueLevel: 0,
-    breathingDifficulty: 0,
-    functionalLimitation: 0,
-  }
+  const keys = metrics.map((m) => m.key)
+  const weights = Object.fromEntries(metrics.map((m) => [m.key, m.weight]))
+  const avgContribution: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]))
   for (const d of windowDays) {
-    for (const key of SYMPTOM_KEYS) {
-      avgContribution[key] += d.ewma[key] * FLARE_WEIGHTS[key]
+    for (const key of keys) {
+      avgContribution[key] += d.ewma[key] * weights[key]
     }
   }
-  const dominantSymptom = SYMPTOM_KEYS.reduce((best, key) =>
+  const dominantSymptom = keys.reduce((best, key) =>
     avgContribution[key] > avgContribution[best] ? key : best,
   )
 
-  // Collect notes
   const triggerNotes = windowLogs
     .filter((l) => l.notes && l.notes.trim().length > 0)
     .map((l) => l.notes)
@@ -368,6 +361,7 @@ function buildFlareWindow(
 function computeSummary(
   days: DayAnalysis[],
   windows: FlareWindow[],
+  metrics: MetricDefinition[],
 ): FlareEngineResult['summary'] {
   const flareDays = days.filter(
     (d) =>
@@ -377,7 +371,6 @@ function computeSummary(
     (d) => d.validatedFlareLevel === 'severe',
   )
 
-  // Current status & streak
   const currentStatus =
     days.length > 0 ? days[days.length - 1].validatedFlareLevel : 'none'
   let currentStreak = 0
@@ -390,33 +383,27 @@ function computeSummary(
   }
 
   // Worst symptom (highest average EWMA across all days)
-  const avgEWMA: Record<SymptomKey, number> = {
-    painLevel: 0,
-    fatigueLevel: 0,
-    breathingDifficulty: 0,
-    functionalLimitation: 0,
-  }
+  const keys = metrics.map((m) => m.key)
+  const avgEWMA: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]))
   for (const d of days) {
-    for (const key of SYMPTOM_KEYS) {
+    for (const key of keys) {
       avgEWMA[key] += d.ewma[key]
     }
   }
   if (days.length > 0) {
-    for (const key of SYMPTOM_KEYS) {
+    for (const key of keys) {
       avgEWMA[key] /= days.length
     }
   }
-  const worstSymptom = SYMPTOM_KEYS.reduce((best, key) =>
-    avgEWMA[key] > avgEWMA[best] ? key : best,
-  )
+  const worstSymptom = keys.length > 0
+    ? keys.reduce((best, key) => avgEWMA[key] > avgEWMA[best] ? key : best)
+    : ''
 
-  // Average composite score
   const averageCompositeScore =
     days.length > 0
       ? days.reduce((s, d) => s + d.compositeScore, 0) / days.length
       : 0
 
-  // Trend direction: last 7 days vs prior 7 days
   let trendDirection: 'improving' | 'stable' | 'worsening' = 'stable'
   if (days.length >= 14) {
     const recent7 = days.slice(-7)
@@ -429,7 +416,6 @@ function computeSummary(
     if (diff < -0.2) trendDirection = 'improving'
     else if (diff > 0.2) trendDirection = 'worsening'
   } else if (days.length >= 4) {
-    // With fewer days, compare halves
     const mid = Math.floor(days.length / 2)
     const recent = days.slice(mid)
     const prior = days.slice(0, mid)
@@ -459,37 +445,36 @@ function computeSummary(
 export function runFlareEngine(
   sortedLogs: DailyLog[],
   baseline: BaselineProfile,
+  metrics: MetricDefinition[] = [],
 ): FlareEngineResult {
-  // Baseline means (from user-defined baseline profile)
-  const means: Record<SymptomKey, number> = {
-    painLevel: baseline.painLevel,
-    fatigueLevel: baseline.fatigueLevel,
-    breathingDifficulty: baseline.breathingDifficulty,
-    functionalLimitation: baseline.functionalLimitation,
+  const keys = metrics.map((m) => m.key)
+
+  // Baseline means
+  const means: Record<string, number> = {}
+  for (const m of metrics) {
+    means[m.key] = readBaselineValue(baseline, m.baselineKey ?? m.key)
   }
 
-  // Standard deviations from the baseline window (first 14 days).
-  // Using only early data prevents flare days from inflating σ,
-  // which would compress Z-scores during the flares we're trying to detect.
+  // Standard deviations from the baseline window (first 14 days)
   const BASELINE_WINDOW = Math.min(14, sortedLogs.length)
   const baselineWindow = sortedLogs.slice(0, BASELINE_WINDOW)
-  const stdDevs: Record<SymptomKey, number> = {} as Record<SymptomKey, number>
-  for (const key of SYMPTOM_KEYS) {
-    const values = baselineWindow.map((l) => l[key])
+  const stdDevs: Record<string, number> = {}
+  for (const key of keys) {
+    const values = baselineWindow.map((l) => readLogValue(l, key))
     stdDevs[key] = computeStdDev(values, means[key])
   }
 
   // Compute daily analysis
-  let dailyAnalysis = computeDailyAnalysis(sortedLogs, means, stdDevs)
+  let dailyAnalysis = computeDailyAnalysis(sortedLogs, means, stdDevs, metrics)
 
   // Validate flare levels (consecutive-day requirement)
   dailyAnalysis = validateFlareLevels(dailyAnalysis)
 
   // Identify flare windows
-  const flareWindows = identifyFlareWindows(dailyAnalysis, sortedLogs)
+  const flareWindows = identifyFlareWindows(dailyAnalysis, sortedLogs, metrics)
 
   // Compute summary
-  const summary = computeSummary(dailyAnalysis, flareWindows)
+  const summary = computeSummary(dailyAnalysis, flareWindows, metrics)
 
   return {
     dailyAnalysis,

@@ -1,8 +1,14 @@
 import { Request, Response } from 'express'
 import DailyLog from '../models/DailyLog'
 import Baseline from '../models/Baseline'
+import UserSchema from '../models/UserSchema'
 import { validateDateString, validateTimeString } from '../middleware/validate'
 import { calculateDeviation, calculateFlareRisk } from '../utils/flareLogic'
+import {
+  extractSymptomsFromNote,
+  processTransientCandidates,
+  processTombstones,
+} from '../utils/transientDetection'
 
 function getTodayDateString(): string {
   return new Date().toISOString().split('T')[0]
@@ -31,16 +37,13 @@ export async function getLogByDate(req: Request, res: Response) {
 export async function createOrUpdateLog(req: Request, res: Response) {
   const {
     date,
-    painLevel,
-    fatigueLevel,
-    breathingDifficulty,
-    functionalLimitation,
     redFlags,
     sleepHours,
     sleepQuality,
     bedtime,
     wakeTime,
     notes,
+    responses,
   } = req.body
 
   // Validate date
@@ -53,8 +56,12 @@ export async function createOrUpdateLog(req: Request, res: Response) {
     return
   }
 
-  // Fetch baseline (required)
-  const baseline = await Baseline.findOne({ userId: req.userId })
+  // Fetch baseline + schema in parallel
+  const [baseline, userSchema] = await Promise.all([
+    Baseline.findOne({ userId: req.userId }),
+    UserSchema.findOne({ userId: req.userId }),
+  ])
+
   if (!baseline) {
     res.status(400).json({ error: 'You must set up your baseline before logging' })
     return
@@ -64,11 +71,20 @@ export async function createOrUpdateLog(req: Request, res: Response) {
     return
   }
 
-  // Validate symptoms (0-10)
-  for (const [key, val] of Object.entries({ painLevel, fatigueLevel, breathingDifficulty, functionalLimitation })) {
-    if (typeof val !== 'number' || val < 0 || val > 10) {
-      res.status(400).json({ error: `${key} must be between 0 and 10` })
-      return
+  // Get active metrics from schema
+  const finalMetrics = userSchema?.finalMetrics || []
+  const transientMetrics = userSchema?.transientMetrics || []
+  const tombstoneMetrics = userSchema?.tombstoneMetrics || []
+  const activeMetrics = [...finalMetrics, ...transientMetrics]
+
+  // Validate symptom responses dynamically
+  if (responses && typeof responses === 'object') {
+    for (const key of activeMetrics) {
+      const val = responses[key]
+      if (val !== undefined && (typeof val !== 'number' || val < 0 || val > 10)) {
+        res.status(400).json({ error: `${key} must be between 0 and 10` })
+        return
+      }
     }
   }
 
@@ -79,8 +95,8 @@ export async function createOrUpdateLog(req: Request, res: Response) {
   }
 
   // Validate sleep
-  if (typeof sleepHours !== 'number' || sleepHours < 3 || sleepHours > 12) {
-    res.status(400).json({ error: 'Sleep hours must be between 3 and 12' })
+  if (typeof sleepHours !== 'number' || sleepHours < 0 || sleepHours > 24) {
+    res.status(400).json({ error: 'Sleep hours must be between 0 and 24' })
     return
   }
   if (typeof sleepQuality !== 'number' || sleepQuality < 1 || sleepQuality > 5) {
@@ -97,31 +113,28 @@ export async function createOrUpdateLog(req: Request, res: Response) {
   }
 
   // Validate notes
-  if (notes && typeof notes === 'string' && notes.length > 150) {
-    res.status(400).json({ error: 'Notes must be 150 characters or less' })
+  if (notes && typeof notes !== 'string') {
+    res.status(400).json({ error: 'Notes must be a string' })
     return
   }
 
-  // Compute deviation and flare risk server-side
-  const logSymptoms = { painLevel, fatigueLevel, breathingDifficulty, functionalLimitation }
-  const baselineSymptoms = {
-    painLevel: baseline.painLevel,
-    fatigueLevel: baseline.fatigueLevel,
-    breathingDifficulty: baseline.breathingDifficulty,
-    functionalLimitation: baseline.functionalLimitation,
-  }
-  const { perMetric, total } = calculateDeviation(logSymptoms, baselineSymptoms)
-  const flareRiskLevel = calculateFlareRisk(total, perMetric, redFlags)
+  // Compute deviation dynamically
+  const logResponses = responses && typeof responses === 'object' ? responses : {}
+  const { perMetric, total } = calculateDeviation(
+    logResponses,
+    baseline.responses,
+    activeMetrics,
+  )
+  const flareRiskLevel = calculateFlareRisk(total, perMetric, redFlags, activeMetrics.length)
 
   const log = await DailyLog.findOneAndUpdate(
     { userId: req.userId, date },
     {
       userId: req.userId,
       date,
-      painLevel,
-      fatigueLevel,
-      breathingDifficulty,
-      functionalLimitation,
+      finalMetrics,
+      transientMetrics,
+      tombstoneMetrics,
       redFlags: {
         chestPainWeaknessConfusion: !!redFlags.chestPainWeaknessConfusion,
         feverSweatsChills: !!redFlags.feverSweatsChills,
@@ -132,11 +145,31 @@ export async function createOrUpdateLog(req: Request, res: Response) {
       bedtime,
       wakeTime,
       notes: notes || '',
+      responses: logResponses,
       deviationScore: total,
       flareRiskLevel,
     },
     { upsert: true, new: true, runValidators: true },
   )
+
+  // Post-save: transient detection from notes (async, non-blocking for response)
+  if (notes && typeof notes === 'string' && notes.trim().length >= 10 && userSchema) {
+    const disease = baseline.primaryCondition
+    const existingMetrics = [...finalMetrics, ...transientMetrics, ...tombstoneMetrics]
+
+    // Run transient detection asynchronously — don't block the response
+    setImmediate(async () => {
+      try {
+        const extracted = await extractSymptomsFromNote(notes, disease, existingMetrics)
+        if (extracted.length > 0) {
+          await processTransientCandidates(req.userId!, date, extracted)
+        }
+        await processTombstones(req.userId!)
+      } catch (err) {
+        console.error('Transient detection error:', (err as Error).message)
+      }
+    })
+  }
 
   res.json({ log })
 }

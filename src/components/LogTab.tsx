@@ -1,52 +1,50 @@
 import { useState } from 'react'
 import { useBaseline } from '../hooks/useBaseline'
 import { useLogs } from '../hooks/useLogs'
-import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
+import { useSchema } from '../hooks/useSchema'
+import { SLEEP_QUALITY_LABELS } from '../types/baseline'
 import {
-  HEALTH_CHECKS,
-  calculateDeviation,
   getTodayDateString,
-  createEmptyLogForm,
 } from '../types/dailyLog'
 import type { DailyLog } from '../types/dailyLog'
 import type { Tab } from './TabBar'
-import MiniSlider from './MiniSlider'
-import LikertScale from './LikertScale'
-import TimeInput from './TimeInput'
+import {
+  createFormDefaults,
+  loadFormFromLog,
+  getFormValue,
+  setFormValue,
+  getSliderQuestions,
+  getToggleQuestions,
+  type FormValues,
+  type FormPage,
+} from '../constants/logFormSchema'
+import QuestionRenderer from './log/QuestionRenderer'
 
-const STEPS = [
-  { title: 'Rate your core symptoms', subtitle: 'Takes 30 seconds' },
-  { title: 'Health Check-in', subtitle: 'Quick yes/no questions' },
-  { title: 'Sleep', subtitle: 'How did you sleep?' },
-  { title: 'Review & Save', subtitle: 'Check your entry before saving' },
-]
+/** Read a value from baseline, checking responses map first then legacy top-level field */
+function readBaselineVal(baseline: FormValues, key: string): unknown {
+  const responses = baseline.responses as Record<string, unknown> | undefined
+  if (responses && responses[key] !== undefined) return responses[key]
+  return baseline[key]
+}
+
+/** Read a value from a log entry, checking responses map first then legacy top-level field */
+function readLogVal(log: FormValues, key: string): unknown {
+  const responses = log.responses as Record<string, unknown> | undefined
+  if (responses && responses[key] !== undefined) return responses[key]
+  return log[key]
+}
+
+// Steps = schema pages + review page at the end
+const REVIEW_STEP = { title: 'Review & Save', subtitle: 'Check your entry before saving' }
 
 interface LogTabProps {
   onSwitchTab: (tab: Tab) => void
 }
 
-function loadFormFromLog(log: DailyLog) {
-  return {
-    painLevel: log.painLevel,
-    fatigueLevel: log.fatigueLevel,
-    breathingDifficulty: log.breathingDifficulty,
-    functionalLimitation: log.functionalLimitation,
-    redFlags: log.redFlags ? { ...log.redFlags } : {
-      chestPainWeaknessConfusion: false,
-      feverSweatsChills: false,
-      missedOrNewMedication: false,
-    },
-    sleepHours: log.sleepHours,
-    sleepQuality: log.sleepQuality,
-    bedtime: log.bedtime,
-    wakeTime: log.wakeTime,
-    notes: log.notes,
-  }
-}
-
 export default function LogTab({ onSwitchTab }: LogTabProps) {
   const { baseline } = useBaseline()
   const { addLog, getLogByDate } = useLogs()
+  const { schema, loading: schemaLoading } = useSchema()
 
   const today = getTodayDateString()
   const [selectedDate, setSelectedDate] = useState(today)
@@ -54,15 +52,23 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
 
   const [step, setStep] = useState(0)
   const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState(() => {
-    if (existingLog) return loadFormFromLog(existingLog)
-    return createEmptyLogForm(baseline ?? undefined)
+  const [form, setForm] = useState<FormValues>(() => {
+    if (!schema) return {}
+    if (existingLog) return loadFormFromLog(existingLog, schema)
+    return createFormDefaults(schema, baseline ?? undefined)
   })
 
   // Track which date the form was initialized for
   const [formDate, setFormDate] = useState(selectedDate)
 
   if (!baseline) return null
+  if (!schema || schemaLoading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-text-muted text-sm">
+        Loading questions...
+      </div>
+    )
+  }
 
   const minDate = baseline.baselineDate ?? ''
   const isToday = selectedDate === today
@@ -71,41 +77,51 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   if (selectedDate !== formDate) {
     const logForDate = getLogByDate(selectedDate)
     if (logForDate) {
-      setForm(loadFormFromLog(logForDate))
+      setForm(loadFormFromLog(logForDate, schema))
     } else {
-      setForm(createEmptyLogForm(baseline))
+      setForm(createFormDefaults(schema, baseline))
     }
     setFormDate(selectedDate)
     setStep(0)
     setEditing(false)
   }
 
-  // For today, gate behind the message screens unless editing
-  // For past dates, go straight to the form
   const showForm = !isToday || editing
 
-  const totalSteps = STEPS.length
+  const totalSteps = schema.pages.length + 1 // +1 for review
   const progress = ((step + 1) / totalSteps) * 100
+  const isReviewStep = step === schema.pages.length
+  const currentPage: FormPage | null = isReviewStep ? null : schema.pages[step]
 
-  const updateSymptom = (key: string, value: number) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const toggleHealthCheck = (key: keyof typeof form.redFlags) => {
-    setForm((prev) => ({ ...prev, redFlags: { ...prev.redFlags, [key]: !prev.redFlags[key] } }))
-  }
+  const stepInfo = isReviewStep
+    ? REVIEW_STEP
+    : { title: currentPage!.title, subtitle: currentPage!.subtitle }
 
   const [saving, setSaving] = useState(false)
 
   const handleSubmit = async () => {
     if (saving) return
     setSaving(true)
-    const { total } = calculateDeviation(form, baseline)
+
+    // Build responses map from all form values for dynamic storage
+    const responses: Record<string, unknown> = {}
+    for (const page of schema.pages) {
+      for (const q of page.questions) {
+        const val = getFormValue(form, q)
+        if (q.type === 'toggle' && q.group) {
+          if (!responses[q.group]) responses[q.group] = {}
+          ;(responses[q.group] as Record<string, unknown>)[q.id] = val
+        } else {
+          responses[q.id] = val
+        }
+      }
+    }
 
     const log: DailyLog = {
-      ...form,
+      ...(form as DailyLog),
       date: selectedDate,
-      deviationScore: total,
+      responses,
+      deviationScore: 0, // computed server-side
       createdAt: existingLog?.createdAt ?? new Date().toISOString(),
     }
 
@@ -122,23 +138,38 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
 
   const startEditing = () => {
     if (existingLog) {
-      setForm(loadFormFromLog(existingLog))
+      setForm(loadFormFromLog(existingLog, schema))
     } else {
-      setForm(createEmptyLogForm(baseline))
+      setForm(createFormDefaults(schema, baseline))
     }
     setStep(0)
     setEditing(true)
   }
 
-  const { perMetric: liveDeviation, total: liveTotal } = calculateDeviation(form, baseline)
-  const hasCheckedItems = Object.values(form.redFlags).some(Boolean)
+  // ── Derived data for review page ─────────────────────────
+  const sliderQs = getSliderQuestions(schema)
+  const toggleQs = getToggleQuestions(schema)
 
-  // Today gate screens
+  const liveDeviation: Record<string, number> = {}
+  let liveTotal = 0
+  for (const q of sliderQs) {
+    if (q.baselineKey) {
+      const val = form[q.id] as number
+      const base = readBaselineVal(baseline as FormValues, q.baselineKey) as number
+      const diff = val - base
+      liveDeviation[q.id] = diff
+      liveTotal += Math.abs(diff)
+    }
+  }
+
+  const activeToggleCount = toggleQs.filter((q) => getFormValue(form, q)).length
+
+  // ── Today gate screens ───────────────────────────────────
+
   if (isToday && !showForm) {
     const todayLog = existingLog
 
     if (todayLog) {
-      // Already logged for today
       return (
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-border p-6">
@@ -152,15 +183,15 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
               </div>
             </div>
 
-            {/* Quick summary of today's log */}
             <div className="bg-surface rounded-xl p-4 mb-4">
               <div className="grid grid-cols-4 gap-3 mb-3">
-                {SYMPTOM_METRICS.map((metric) => {
-                  const val = todayLog[metric.key]
-                  const diff = val - baseline[metric.key]
+                {sliderQs.map((q) => {
+                  const val = readLogVal(todayLog as FormValues, q.id) as number
+                  const base = q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) as number : 0
+                  const diff = val - base
                   return (
-                    <div key={metric.key} className="text-center">
-                      <p className="text-[10px] text-text-muted">{metric.label}</p>
+                    <div key={q.id} className="text-center">
+                      <p className="text-[10px] text-text-muted">{q.label}</p>
                       <p className="text-lg font-bold text-slate-600">{val}</p>
                       {diff !== 0 && (
                         <p className="text-[10px] font-bold" style={{ color: diff > 0 ? '#ef4444' : '#10b981' }}>
@@ -213,7 +244,8 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
     )
   }
 
-  // Date label for past dates
+  // ── Date label for past dates ────────────────────────────
+
   const dateLabel = isToday
     ? 'Today'
     : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
@@ -222,6 +254,132 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
         day: 'numeric',
         year: 'numeric',
       })
+
+  // ── Render question page from schema ─────────────────────
+
+  const renderQuestionPage = (page: FormPage) => {
+    if (page.layout === 'grouped') {
+      return (
+        <div className="bg-white rounded-2xl border border-border p-5">
+          <h3 className="font-semibold text-text mb-1">{page.title}</h3>
+          {page.description && (
+            <p className="text-xs text-text-muted mb-4">{page.description}</p>
+          )}
+          <div className="space-y-3">
+            {page.questions.map((q) => (
+              <QuestionRenderer
+                key={q.id}
+                question={q}
+                value={getFormValue(form, q)}
+                onChange={(v) => setForm((prev) => setFormValue(prev, q, v))}
+                baselineValue={q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) : undefined}
+              />
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    // Default: each question in its own card
+    return (
+      <div className="space-y-3">
+        {page.questions.map((q) => (
+          <QuestionRenderer
+            key={q.id}
+            question={q}
+            value={getFormValue(form, q)}
+            onChange={(v) => setForm((prev) => setFormValue(prev, q, v))}
+            baselineValue={q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) : undefined}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  // ── Render review page ───────────────────────────────────
+
+  const renderReviewPage = () => (
+    <div className="space-y-4">
+      {/* Change from Baseline */}
+      <div className="rounded-2xl p-5 border-2 border-primary/20 bg-primary/5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-text-muted mb-1">Change from Baseline</p>
+            <p className="text-3xl font-bold text-text">{liveTotal}</p>
+          </div>
+          <p className="text-xs text-text-muted max-w-[140px] text-right">
+            Total deviation across all symptoms
+          </p>
+        </div>
+      </div>
+
+      {/* Symptoms vs Baseline */}
+      <div className="bg-white rounded-2xl border border-border p-5">
+        <h3 className="font-semibold text-text mb-3 text-sm">Symptoms vs Baseline</h3>
+        {sliderQs.map((q) => {
+          const val = form[q.id] as number
+          const base = q.baselineKey ? readBaselineVal(baseline as FormValues, q.baselineKey) as number : 0
+          const diff = liveDeviation[q.id] ?? 0
+          return (
+            <div key={q.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+              <span className="text-sm text-text">{q.label}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-text-muted">Base: {base}</span>
+                <span className="text-sm font-bold text-slate-600">{val}</span>
+                {diff !== 0 && (
+                  <span
+                    className="text-xs font-bold px-1.5 py-0.5 rounded"
+                    style={{
+                      color: diff > 0 ? '#ef4444' : '#10b981',
+                      backgroundColor: diff > 0 ? '#fef2f2' : '#f0fdf4',
+                    }}
+                  >
+                    {diff > 0 ? '\u2191' : '\u2193'}{Math.abs(diff)}
+                  </span>
+                )}
+                {diff === 0 && <span className="text-[10px] text-text-muted">{'\u2192'}</span>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Quick summary */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-white rounded-xl border border-border p-3 text-center">
+          <p className="text-[10px] text-text-muted">Sleep</p>
+          <p className="font-bold text-text">{form.sleepHours as number}h</p>
+          <p className="text-[10px] text-text-muted">{SLEEP_QUALITY_LABELS[form.sleepQuality as number]}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-border p-3 text-center">
+          <p className="text-[10px] text-text-muted">Health Check</p>
+          <p className={`font-bold ${activeToggleCount > 0 ? 'text-text' : 'text-emerald-500'}`}>
+            {activeToggleCount > 0 ? `${activeToggleCount} noted` : 'All clear'}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-border p-3 text-center">
+          <p className="text-[10px] text-text-muted">Bed/Wake</p>
+          <p className="font-bold text-text font-mono text-xs">{form.bedtime as string}{'\u2013'}{form.wakeTime as string}</p>
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div className="bg-white rounded-2xl border border-border p-5">
+        <label className="block text-sm font-medium text-text mb-1">
+          Anything notable? <span className="text-text-muted font-normal">(optional)</span>
+        </label>
+        <textarea
+          value={form.notes as string}
+          onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+          placeholder="Brief note for your doctor..."
+          className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-text placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none transition-all"
+          rows={2}
+        />
+      </div>
+    </div>
+  )
+
+  // ── Main form layout ─────────────────────────────────────
 
   return (
     <div>
@@ -270,8 +428,8 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
       <div className="bg-white rounded-2xl border border-border p-4 mb-6">
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h2 className="text-base font-semibold text-text">{STEPS[step].title}</h2>
-            <p className="text-text-muted text-xs">{STEPS[step].subtitle}</p>
+            <h2 className="text-base font-semibold text-text">{stepInfo.title}</h2>
+            <p className="text-text-muted text-xs">{stepInfo.subtitle}</p>
           </div>
           <span className="text-xs font-medium text-text-muted">
             Step {step + 1} of {totalSteps}
@@ -285,205 +443,11 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
         </div>
       </div>
 
-      {/* Step 0: Core Symptoms */}
-      {step === 0 && (
-        <div className="space-y-3">
-          {SYMPTOM_METRICS.map((metric) => (
-            <div key={metric.key} className="bg-white rounded-xl border border-border px-4 py-3">
-              <p className="text-sm font-medium text-text mb-2">{metric.dailyQuestion}</p>
-              <MiniSlider
-                label={metric.label}
-                icon=""
-                showIcon={false}
-                value={form[metric.key as keyof typeof form] as number}
-                onChange={(v) => updateSymptom(metric.key, v)}
-                color="#64748b"
-                trackStyle="intensity"
-                baselineValue={baseline[metric.key]}
-              />
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Question pages from schema */}
+      {currentPage && renderQuestionPage(currentPage)}
 
-      {/* Step 1: Health Check-in */}
-      {step === 1 && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-border p-5">
-            <h3 className="font-semibold text-text mb-1">Health Check-in</h3>
-            <p className="text-xs text-text-muted mb-4">Have you experienced any of the following?</p>
-            <div className="space-y-3">
-              {HEALTH_CHECKS.map((check) => {
-                const isActive = form.redFlags[check.key]
-                return (
-                  <button
-                    key={check.key}
-                    onClick={() => toggleHealthCheck(check.key)}
-                    className={`
-                      w-full flex items-center justify-between p-4 rounded-xl transition-all duration-200 border-2
-                      ${isActive
-                        ? 'border-primary/40 bg-primary/5'
-                        : 'border-border bg-white hover:border-gray-300'}
-                    `}
-                  >
-                    <span className={`text-sm font-medium ${isActive ? 'text-text' : 'text-text'}`}>
-                      {check.label}
-                    </span>
-                    <div className={`
-                      w-14 h-8 rounded-full transition-all duration-200 flex items-center px-1
-                      ${isActive ? 'bg-primary justify-end' : 'bg-gray-200 justify-start'}
-                    `}>
-                      <div className="w-6 h-6 bg-white rounded-full shadow-sm" />
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Step 2: Sleep */}
-      {step === 2 && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-border p-4">
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-text text-sm">Hours Slept</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  max={24}
-                  value={form.sleepHours || ''}
-                  onChange={(e) => setForm((prev) => ({ ...prev, sleepHours: Math.max(0, Math.min(24, Number(e.target.value))) }))}
-                  placeholder="7"
-                  className="w-24 px-3 py-2 rounded-lg border border-border bg-surface text-text text-center font-bold text-base focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-                />
-                <span className="text-sm text-text-muted">hours</span>
-              </div>
-            </div>
-            {baseline.sleepHours !== undefined && (
-              <div className="flex items-center gap-1.5 mt-2 text-[10px] text-text-muted">
-                <span className="w-2 h-2 rounded-full bg-surface-dark inline-block" />
-                Baseline: {baseline.sleepHours} hours
-              </div>
-            )}
-          </div>
-          <LikertScale
-            value={form.sleepQuality}
-            onChange={(v) => setForm((prev) => ({ ...prev, sleepQuality: v }))}
-            baselineValue={baseline.sleepQuality}
-            showIcon={false}
-            variant="neutral"
-          />
-          <TimeInput
-            label="Bedtime"
-            icon=""
-            value={form.bedtime}
-            onChange={(v) => setForm((prev) => ({ ...prev, bedtime: v }))}
-            baselineValue={baseline.usualBedtime}
-            showIcon={false}
-            showDropdownArrow
-          />
-          <TimeInput
-            label="Wake Time"
-            icon=""
-            value={form.wakeTime}
-            onChange={(v) => setForm((prev) => ({ ...prev, wakeTime: v }))}
-            baselineValue={baseline.usualWakeTime}
-            showIcon={false}
-            showDropdownArrow
-          />
-        </div>
-      )}
-
-      {/* Step 3: Review */}
-      {step === 3 && (
-        <div className="space-y-4">
-          {/* Change from Baseline */}
-          <div className="rounded-2xl p-5 border-2 border-primary/20 bg-primary/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-text-muted mb-1">Change from Baseline</p>
-                <p className="text-3xl font-bold text-text">{liveTotal}</p>
-              </div>
-              <p className="text-xs text-text-muted max-w-[140px] text-right">
-                Total deviation across all symptoms
-              </p>
-            </div>
-          </div>
-
-          {/* Metrics vs baseline */}
-          <div className="bg-white rounded-2xl border border-border p-5">
-            <h3 className="font-semibold text-text mb-3 text-sm">Symptoms vs Baseline</h3>
-            {SYMPTOM_METRICS.map((metric) => {
-              const val = form[metric.key as keyof typeof form] as number
-              const base = baseline[metric.key]
-              const diff = liveDeviation[metric.key]
-              return (
-                <div key={metric.key} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-text">{metric.label}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] text-text-muted">Base: {base}</span>
-                    <span className="text-sm font-bold text-slate-600">{val}</span>
-                    {diff !== 0 && (
-                      <span
-                        className="text-xs font-bold px-1.5 py-0.5 rounded"
-                        style={{
-                          color: diff > 0 ? '#ef4444' : '#10b981',
-                          backgroundColor: diff > 0 ? '#fef2f2' : '#f0fdf4',
-                        }}
-                      >
-                        {diff > 0 ? '↑' : '↓'}{Math.abs(diff)}
-                      </span>
-                    )}
-                    {diff === 0 && <span className="text-[10px] text-text-muted">→</span>}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Quick summary */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="bg-white rounded-xl border border-border p-3 text-center">
-              <p className="text-[10px] text-text-muted">Sleep</p>
-              <p className="font-bold text-text">{form.sleepHours}h</p>
-              <p className="text-[10px] text-text-muted">{SLEEP_QUALITY_LABELS[form.sleepQuality]}</p>
-            </div>
-            <div className="bg-white rounded-xl border border-border p-3 text-center">
-              <p className="text-[10px] text-text-muted">Health Check</p>
-              <p className={`font-bold ${hasCheckedItems ? 'text-text' : 'text-emerald-500'}`}>
-                {hasCheckedItems
-                  ? `${Object.values(form.redFlags).filter(Boolean).length} noted`
-                  : 'All clear'}
-              </p>
-            </div>
-            <div className="bg-white rounded-xl border border-border p-3 text-center">
-              <p className="text-[10px] text-text-muted">Bed/Wake</p>
-              <p className="font-bold text-text font-mono text-xs">{form.bedtime}–{form.wakeTime}</p>
-            </div>
-          </div>
-
-          {/* Note */}
-          <div className="bg-white rounded-2xl border border-border p-5">
-            <label className="block text-sm font-medium text-text mb-1">
-              Anything notable? <span className="text-text-muted font-normal">(optional, 150 chars)</span>
-            </label>
-            <textarea
-              value={form.notes}
-              onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value.slice(0, 150) }))}
-              placeholder="Brief note for your doctor..."
-              maxLength={150}
-              className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-text placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none transition-all"
-              rows={2}
-            />
-            <p className="text-right text-[10px] text-text-muted mt-1">{form.notes.length}/150</p>
-          </div>
-        </div>
-      )}
+      {/* Review page */}
+      {isReviewStep && renderReviewPage()}
 
       {/* Navigation */}
       <div className="flex items-center justify-between mt-8">
@@ -500,7 +464,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
           {step === 0 ? 'Cancel' : 'Back'}
         </button>
 
-        {step === totalSteps - 1 ? (
+        {isReviewStep ? (
           <button
             onClick={handleSubmit}
             className="px-8 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary to-primary-dark hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"

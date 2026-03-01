@@ -20,15 +20,19 @@ interface SleepChartProps {
 export default function SleepChart({ logs }: SleepChartProps) {
   const data = useMemo(
     () =>
-      logs.map((log) => ({
-        date: new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        }),
-        hours: log.sleepHours,
-        quality: log.sleepQuality,
-        qualityLabel: SLEEP_QUALITY_LABELS[log.sleepQuality],
-      })),
+      logs.map((log) => {
+        const hours = (log.responses?.sleepHours ?? log.sleepHours) as number
+        const quality = (log.responses?.sleepQuality ?? log.sleepQuality) as number
+        return {
+          date: new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          }),
+          hours,
+          quality,
+          qualityLabel: SLEEP_QUALITY_LABELS[quality],
+        }
+      }),
     [logs],
   )
 
@@ -47,7 +51,7 @@ export default function SleepChart({ logs }: SleepChartProps) {
           <span className="w-3 h-2 rounded-sm bg-indigo-400 inline-block" /> Hours
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-amber-500 inline-block" /> Quality (1-5)
+          <span className="w-3 h-0.5 bg-emerald-500 inline-block" /> Quality (1-5)
         </span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
@@ -79,8 +83,8 @@ export default function SleepChart({ logs }: SleepChartProps) {
               return [`${value}h`, name]
             }}
           />
-          <Bar yAxisId="hours" dataKey="hours" name="Hours" fill="#818cf8" radius={[4, 4, 0, 0]} barSize={20} opacity={0.7} />
-          <Line yAxisId="quality" type="monotone" dataKey="quality" name="Quality" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3, fill: '#f59e0b', strokeWidth: 0 }} />
+          <Bar yAxisId="hours" dataKey="hours" name="Hours" fill="#818cf8" radius={[4, 4, 0, 0]} opacity={0.45} />
+          <Line yAxisId="quality" type="monotone" dataKey="quality" name="Quality" stroke="#10b981" strokeWidth={2.5} dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: '#10b981', fill: 'white' }} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>

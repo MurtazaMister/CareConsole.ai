@@ -1,6 +1,7 @@
 import { useBaseline } from '../hooks/useBaseline'
 import { useLogs } from '../hooks/useLogs'
-import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
+import { useSchema } from '../hooks/useSchema'
+import { SLEEP_QUALITY_LABELS } from '../types/baseline'
 import type { Tab } from './TabBar'
 import ChartsPanel from './charts/ChartsPanel'
 
@@ -11,6 +12,7 @@ interface OverviewTabProps {
 export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
   const { baseline } = useBaseline()
   const { getTodayLog } = useLogs()
+  const { activeMetrics } = useSchema()
 
   if (!baseline) return null
 
@@ -27,7 +29,7 @@ export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
               <p className="text-xs text-text-muted mb-1 uppercase tracking-wide font-medium">Today's Log</p>
               <p className="text-lg font-semibold text-text">Logged</p>
               <p className="text-sm text-text-muted mt-2">
-                Sleep: {todayLog.sleepHours}h ({SLEEP_QUALITY_LABELS[todayLog.sleepQuality]})
+                Sleep: {(todayLog.responses?.sleepHours ?? todayLog.sleepHours) as number}h ({SLEEP_QUALITY_LABELS[(todayLog.responses?.sleepQuality ?? todayLog.sleepQuality) as number]})
                 {checkedItems > 0 && (
                   <> &middot; <span className="text-text">{checkedItems} health note{checkedItems > 1 ? 's' : ''}</span></>
                 )}
@@ -67,9 +69,13 @@ export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
           {todayLog ? 'Today vs Baseline' : 'Your Baseline'}
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {SYMPTOM_METRICS.map((metric) => {
-            const baseValue = baseline[metric.key]
-            const todayValue = todayLog?.[metric.key] as number | undefined
+          {activeMetrics.map((metric) => {
+            const baseValue = (baseline.responses?.[metric.baselineKey ?? metric.key]
+              ?? (baseline as Record<string, unknown>)[metric.baselineKey ?? metric.key]
+              ?? 0) as number
+            const todayValue = todayLog
+              ? (todayLog.responses?.[metric.key] ?? (todayLog as Record<string, unknown>)[metric.key]) as number | undefined
+              : undefined
             const diff = todayValue !== undefined ? todayValue - baseValue : undefined
 
             return (
@@ -89,11 +95,11 @@ export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
                         backgroundColor: diff > 0 ? '#fef2f2' : '#f0fdf4',
                       }}
                     >
-                      {diff > 0 ? '↑' : '↓'}{Math.abs(diff)}
+                      {diff > 0 ? '\u2191' : '\u2193'}{Math.abs(diff)}
                     </span>
                   )}
                   {diff === 0 && (
-                    <span className="text-xs text-text-muted font-medium">→ No change</span>
+                    <span className="text-xs text-text-muted font-medium">{'\u2192'} No change</span>
                   )}
                 </div>
 

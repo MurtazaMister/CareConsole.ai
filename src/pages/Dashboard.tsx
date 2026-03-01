@@ -3,6 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import { useBaseline } from '../hooks/useBaseline'
 import { useLogs } from '../hooks/useLogs'
 import { useAuth } from '../hooks/useAuth'
+import { useSchema } from '../hooks/useSchema'
 import TabBar from '../components/TabBar'
 import type { Tab } from '../components/TabBar'
 import OverviewTab from '../components/OverviewTab'
@@ -15,18 +16,19 @@ export default function Dashboard() {
   const { baseline, loading: baselineLoading, fetchBaseline } = useBaseline()
   const { getTodayLog, loading: logsLoading, fetchLogs } = useLogs()
   const { currentUser, logout } = useAuth()
+  const { fetchSchema } = useSchema()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const [fetched, setFetched] = useState(false)
 
-  // Fetch baseline and logs on mount
+  // Fetch baseline, logs, and schema on mount
   useEffect(() => {
     if (!fetched) {
-      Promise.all([fetchBaseline(), fetchLogs()]).then(() => setFetched(true))
+      Promise.all([fetchBaseline(), fetchLogs(), fetchSchema()]).then(() => setFetched(true))
     }
-  }, [fetched, fetchBaseline, fetchLogs])
+  }, [fetched, fetchBaseline, fetchLogs, fetchSchema])
 
   // Close menu on outside click
   useEffect(() => {

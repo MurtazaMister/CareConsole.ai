@@ -3,8 +3,8 @@ import { useBaseline } from '../../hooks/useBaseline'
 import { useLogs } from '../../hooks/useLogs'
 import { useFilteredLogs } from '../../hooks/useFilteredLogs'
 import { useFlareEngine } from '../../hooks/useFlareEngine'
-import { SYMPTOM_METRICS } from '../../types/baseline'
-import type { DateRangeKey } from '../../constants/chartTheme'
+import { useSchema } from '../../hooks/useSchema'
+import type { DateRange } from '../../constants/chartTheme'
 import ChartSection from './ChartSection'
 import DateRangeSelector from './DateRangeSelector'
 import MetricToggle from './MetricToggle'
@@ -16,9 +16,10 @@ import SleepChart from './SleepChart'
 export default function ChartsPanel() {
   const { baseline } = useBaseline()
   const { logs, getTodayLog } = useLogs()
-  const [range, setRange] = useState<DateRangeKey>('14d')
-  const [activeMetrics, setActiveMetrics] = useState<Set<string>>(
-    new Set(SYMPTOM_METRICS.map((m) => m.key)),
+  const { activeMetrics } = useSchema()
+  const [range, setRange] = useState<DateRange>({ preset: '1m', days: 30 })
+  const [activeKeys, setActiveKeys] = useState<Set<string>>(
+    new Set(activeMetrics.map((m) => m.key)),
   )
 
   const filteredLogs = useFilteredLogs(range)
@@ -49,15 +50,15 @@ export default function ChartsPanel() {
 
       {/* Row 1: Radar */}
       <ChartSection title="Today vs Baseline" info="Compares today's symptom levels against your baseline. A larger shape means more deviation from your normal.">
-        <SymptomRadarChart baseline={baseline} todayLog={todayLog} />
+        <SymptomRadarChart baseline={baseline} todayLog={todayLog} metrics={activeMetrics} />
       </ChartSection>
 
       {/* Row 2: Symptom Trends */}
       <ChartSection title="Symptom Trends" info="Each line tracks one symptom over time. Use the toggles to show or hide specific symptoms. Shaded areas highlight detected flare windows.">
         <div className="mb-3">
-          <MetricToggle active={activeMetrics} onChange={setActiveMetrics} />
+          <MetricToggle active={activeKeys} onChange={setActiveKeys} metrics={activeMetrics} />
         </div>
-        <SymptomTrendChart logs={filteredLogs} activeMetrics={activeMetrics} flareWindows={visibleFlareWindows} />
+        <SymptomTrendChart logs={filteredLogs} activeMetrics={activeKeys} flareWindows={visibleFlareWindows} metrics={activeMetrics} />
       </ChartSection>
 
       {/* Row 3: Deviation Trend */}
