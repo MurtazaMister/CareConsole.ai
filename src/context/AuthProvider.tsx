@@ -95,6 +95,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const deleteAccount = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch('/api/user/account', {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Failed to delete account' }))
+        return { success: false, error: data.error || 'Failed to delete account' }
+      }
+      setCurrentUser(null)
+      return { success: true }
+    } catch {
+      return { success: false, error: 'Network error. Is the server running?' }
+    }
+  }, [])
+
   const profile = currentUser?.profile ?? null
 
   return (
@@ -109,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         saveProfile,
+        deleteAccount,
       }}
     >
       {children}

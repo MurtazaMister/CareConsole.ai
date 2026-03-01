@@ -34,6 +34,21 @@ export async function getLogByDate(req: Request, res: Response) {
   res.json({ log })
 }
 
+export async function deleteLogByDate(req: Request, res: Response) {
+  const date = req.params.date as string
+  if (!validateDateString(date)) {
+    res.status(400).json({ error: 'Invalid date format (YYYY-MM-DD)' })
+    return
+  }
+
+  const result = await DailyLog.findOneAndDelete({ userId: req.userId, date })
+  if (!result) {
+    res.status(404).json({ error: 'No log found for this date' })
+    return
+  }
+  res.json({ success: true })
+}
+
 export async function createOrUpdateLog(req: Request, res: Response) {
   const {
     date,

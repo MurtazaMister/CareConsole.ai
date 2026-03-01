@@ -21,13 +21,15 @@ const TABS: { key: PatientTab; label: string; icon: string }[] = [
 export default function PatientDashboard() {
   const { baseline, loading: baselineLoading, fetchBaseline } = useBaseline()
   const { getTodayLog, loading: logsLoading, fetchLogs } = useLogs()
-  const { currentUser, logout } = useAuth()
+  const { currentUser, logout, deleteAccount } = useAuth()
   const { fetchSchema } = useSchema()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<PatientTab>('log')
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const [fetched, setFetched] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
 
   useEffect(() => {
     if (!fetched) {
@@ -79,6 +81,15 @@ export default function PatientDashboard() {
     setMenuOpen(false)
     await logout()
     navigate('/auth')
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeletingAccount(true)
+    const result = await deleteAccount()
+    setDeletingAccount(false)
+    if (result.success) {
+      navigate('/auth')
+    }
   }
 
   // Adapter: OverviewTab and LogTab expect Tab type from TabBar, map PatientTab → Tab
@@ -134,6 +145,12 @@ export default function PatientDashboard() {
                     >
                       Log Out
                     </button>
+                    <button
+                      onClick={() => { setMenuOpen(false); setShowDeleteConfirm(true) }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-danger hover:bg-red-50 transition-colors"
+                    >
+                      Delete Account
+                    </button>
                   </div>
                 </div>
               )}
@@ -171,6 +188,34 @@ export default function PatientDashboard() {
         {activeTab === 'history' && <HistoryTab onSwitchTab={handleSwitchTab} />}
         {activeTab === 'reports' && <ReportsTab onSwitchTab={handleSwitchTab} />}
       </div>
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-border shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-semibold text-text mb-2">Delete Account</h3>
+            <p className="text-sm text-text-muted mb-6">
+              This will permanently delete your account, profile, baseline, and all logs. This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deletingAccount}
+                className="px-4 py-2.5 text-sm font-medium text-text-muted border border-border rounded-xl hover:bg-surface transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount}
+                className="px-4 py-2.5 text-sm font-medium text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors"
+              >
+                {deletingAccount ? 'Deleting...' : 'Delete My Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

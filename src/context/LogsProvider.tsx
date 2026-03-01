@@ -48,6 +48,18 @@ export function LogsProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const deleteLog = useCallback(async (date: string) => {
+    const res = await fetch(`/api/logs/${date}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: 'Failed to delete log' }))
+      throw new Error(data.error || 'Failed to delete log')
+    }
+    setLogs((prev) => prev.filter((l) => l.date !== date))
+  }, [])
+
   const getLogByDate = useCallback(
     (date: string) => logs.find((l) => l.date === date),
     [logs],
@@ -59,7 +71,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   )
 
   return (
-    <LogsContext.Provider value={{ logs, loading, addLog, getLogByDate, getTodayLog, fetchLogs }}>
+    <LogsContext.Provider value={{ logs, loading, addLog, deleteLog, getLogByDate, getTodayLog, fetchLogs }}>
       {children}
     </LogsContext.Provider>
   )

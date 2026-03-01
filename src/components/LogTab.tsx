@@ -545,55 +545,41 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   // ── Render notes page ───────────────────────────────────
 
   const renderNotesPage = () => (
-    <div className="space-y-4">
-      {/* Voice Input — prominent */}
-      <div className="bg-white rounded-2xl border border-border p-6">
-        <div className="text-center mb-5">
-          <h3 className="font-semibold text-text mb-1">Voice Notes</h3>
-          <p className="text-xs text-text-muted">
-            Speak naturally — AI will clean up grammar and gibberish automatically
-          </p>
-        </div>
-
-        <VoiceButton
-          size="large"
-          onRawTranscript={(raw) => setRawTranscript(raw)}
-          onTranscription={(cleaned) => {
-            const current = ((form.notes as string) || '').trim()
-            setForm((prev) => ({ ...prev, notes: current ? `${current}\n${cleaned}` : cleaned }))
-            setRawTranscript('')
-          }}
-        />
-
-        {/* Show raw → cleaned comparison */}
-        {rawTranscript && (
-          <div className="mt-4 bg-amber-50 rounded-xl border border-amber-200 p-3">
-            <p className="text-[10px] font-medium text-amber-700 mb-1">Raw voice input:</p>
-            <p className="text-xs text-amber-900 italic">"{rawTranscript}"</p>
-          </div>
-        )}
+    <div className="bg-white rounded-2xl border border-border p-6">
+      <div className="text-center mb-5">
+        <h3 className="font-semibold text-text mb-1">Notes & Voice Input</h3>
+        <p className="text-xs text-text-muted">
+          Speak naturally — AI will clean up grammar and gibberish automatically
+        </p>
       </div>
 
-      {/* Text input — manual typing */}
-      <div className="bg-white rounded-2xl border border-border p-5">
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-text">
-            Your Notes <span className="text-text-muted font-normal">(optional)</span>
-          </label>
-          <VoiceButton
-            size="compact"
-            onRawTranscript={(raw) => setRawTranscript(raw)}
-            onTranscription={(cleaned) => {
-              const current = ((form.notes as string) || '').trim()
-              setForm((prev) => ({ ...prev, notes: current ? `${current}\n${cleaned}` : cleaned }))
-              setRawTranscript('')
-            }}
-          />
+      <VoiceButton
+        size="large"
+        onRawTranscript={(raw) => setRawTranscript(raw)}
+        onTranscription={(cleaned) => {
+          const current = ((form.notes as string) || '').trim()
+          setForm((prev) => ({ ...prev, notes: current ? `${current}\n${cleaned}` : cleaned }))
+          setRawTranscript('')
+        }}
+      />
+
+      {/* Show raw → cleaned comparison */}
+      {rawTranscript && (
+        <div className="mt-4 bg-amber-50 rounded-xl border border-amber-200 p-3">
+          <p className="text-[10px] font-medium text-amber-700 mb-1">Raw voice input:</p>
+          <p className="text-xs text-amber-900 italic">"{rawTranscript}"</p>
         </div>
+      )}
+
+      {/* Text area — voice output lands here, or type manually */}
+      <div className="mt-5">
+        <label className="block text-sm font-medium text-text mb-2">
+          Your Notes <span className="text-text-muted font-normal">(optional)</span>
+        </label>
         <textarea
           value={(form.notes as string) || ''}
           onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-          placeholder="Type your notes here, or use the mic button above to dictate..."
+          placeholder="Tap the mic above to dictate, or type here..."
           className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-text placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none transition-all"
           rows={4}
         />

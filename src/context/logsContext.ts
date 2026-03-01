@@ -8,6 +8,7 @@ export interface LogsContextType {
   getLogByDate: (date: string) => DailyLog | undefined
   getTodayLog: () => DailyLog | undefined
   fetchLogs: () => Promise<void>
+  deleteLog: (date: string) => Promise<void>
 }
 
 export const LogsContext = createContext<LogsContextType | null>(null)
