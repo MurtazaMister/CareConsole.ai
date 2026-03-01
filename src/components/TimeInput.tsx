@@ -4,14 +4,15 @@ interface TimeInputProps {
   value: string // HH:MM
   onChange: (value: string) => void
   baselineValue?: string
+  showIcon?: boolean
 }
 
-export default function TimeInput({ label, icon, value, onChange, baselineValue }: TimeInputProps) {
+export default function TimeInput({ label, icon, value, onChange, baselineValue, showIcon = true }: TimeInputProps) {
   return (
     <div className="bg-white rounded-xl border border-border p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xl">{icon}</span>
+          {showIcon ? <span className="text-xl">{icon}</span> : null}
           <span className="font-medium text-text text-sm">{label}</span>
         </div>
         <input

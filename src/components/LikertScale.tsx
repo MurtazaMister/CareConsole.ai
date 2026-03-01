@@ -4,17 +4,28 @@ interface LikertScaleProps {
   value: number
   onChange: (value: number) => void
   baselineValue?: number
+  showIcon?: boolean
+  variant?: 'accent' | 'neutral'
 }
 
-export default function LikertScale({ value, onChange, baselineValue }: LikertScaleProps) {
+export default function LikertScale({
+  value,
+  onChange,
+  baselineValue,
+  showIcon = true,
+  variant = 'accent',
+}: LikertScaleProps) {
+  const isNeutral = variant === 'neutral'
   return (
     <div className="bg-white rounded-xl border border-border p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-xl">😴</span>
+          {showIcon ? <span className="text-xl">😴</span> : null}
           <span className="font-medium text-text text-sm">Sleep Quality</span>
         </div>
-        <span className="text-sm font-bold text-indigo-500">{SLEEP_QUALITY_LABELS[value]}</span>
+        <span className={`text-sm font-bold ${isNeutral ? 'text-slate-600' : 'text-indigo-500'}`}>
+          {SLEEP_QUALITY_LABELS[value]}
+        </span>
       </div>
 
       <div className="flex gap-2">
@@ -25,7 +36,9 @@ export default function LikertScale({ value, onChange, baselineValue }: LikertSc
             className={`
               flex-1 py-3 rounded-xl text-center transition-all duration-200 border-2 font-medium
               ${value === n
-                ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm scale-105'
+                ? isNeutral
+                  ? 'border-slate-400 bg-slate-100 text-slate-700 shadow-sm scale-105'
+                  : 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm scale-105'
                 : 'border-border bg-white text-text-muted hover:border-gray-300 hover:bg-surface-dark'}
             `}
           >
