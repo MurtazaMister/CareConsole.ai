@@ -1,4 +1,4 @@
-export type Tab = 'overview' | 'log' | 'history'
+export type Tab = 'overview' | 'log' | 'history' | 'insights'
 
 interface TabBarProps {
   active: Tab
@@ -10,6 +10,7 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'overview', label: 'Overview', icon: '📊' },
   { key: 'log', label: 'Daily Log', icon: '📝' },
   { key: 'history', label: 'History', icon: '📅' },
+  { key: 'insights', label: 'Insights', icon: '🔬' },
 ]
 
 export default function TabBar({ active, onChange, hasLoggedToday }: TabBarProps) {

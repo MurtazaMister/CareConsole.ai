@@ -7,30 +7,56 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  ReferenceArea,
 } from 'recharts'
 import { SYMPTOM_METRICS } from '../../types/baseline'
 import { CHART_AXIS_STYLE, CHART_GRID_STYLE, CHART_TOOLTIP_STYLE } from '../../constants/chartTheme'
+import { FLARE_WINDOW_CHART_COLORS } from '../../constants/flareTheme'
 import type { DailyLog } from '../../types/dailyLog'
+import type { FlareWindow } from '../../lib/flareEngine'
 
 interface SymptomTrendChartProps {
   logs: DailyLog[]
   activeMetrics: Set<string>
+  flareWindows?: FlareWindow[]
 }
 
-export default function SymptomTrendChart({ logs, activeMetrics }: SymptomTrendChartProps) {
+function formatDateLabel(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+export default function SymptomTrendChart({ logs, activeMetrics, flareWindows }: SymptomTrendChartProps) {
   const data = useMemo(
     () =>
       logs.map((log) => ({
-        date: new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        }),
+        date: formatDateLabel(log.date),
         ...Object.fromEntries(
           SYMPTOM_METRICS.map((m) => [m.key, log[m.key]]),
         ),
       })),
     [logs],
   )
+
+  // Map flare window dates to chart date labels
+  const dateSet = new Set(data.map((d) => d.date))
+  const windowOverlays = useMemo(() => {
+    if (!flareWindows || flareWindows.length === 0) return []
+    return flareWindows.map((fw) => {
+      const x1 = formatDateLabel(fw.startDate)
+      const x2 = fw.endDate
+        ? formatDateLabel(fw.endDate)
+        : data[data.length - 1]?.date
+      return {
+        id: fw.id,
+        x1: dateSet.has(x1) ? x1 : data[0]?.date,
+        x2: dateSet.has(x2!) ? x2! : data[data.length - 1]?.date,
+        isSevere: fw.peakLevel === 'severe',
+      }
+    }).filter((o) => o.x1 && o.x2)
+  }, [flareWindows, data, dateSet])
 
   if (logs.length < 2) {
     return (
@@ -47,6 +73,17 @@ export default function SymptomTrendChart({ logs, activeMetrics }: SymptomTrendC
         <XAxis dataKey="date" tick={CHART_AXIS_STYLE} tickLine={false} axisLine={false} />
         <YAxis domain={[0, 10]} tick={CHART_AXIS_STYLE} tickLine={false} axisLine={false} />
         <Tooltip {...CHART_TOOLTIP_STYLE} />
+        {windowOverlays.map((o) => (
+          <ReferenceArea
+            key={o.id}
+            x1={o.x1}
+            x2={o.x2}
+            fill={o.isSevere ? FLARE_WINDOW_CHART_COLORS.severe : FLARE_WINDOW_CHART_COLORS.mild}
+            stroke={o.isSevere ? FLARE_WINDOW_CHART_COLORS.severeStroke : FLARE_WINDOW_CHART_COLORS.mildStroke}
+            strokeDasharray="4 4"
+            ifOverflow="extendDomain"
+          />
+        ))}
         {SYMPTOM_METRICS.filter((m) => activeMetrics.has(m.key)).map((metric) => (
           <Line
             key={metric.key}

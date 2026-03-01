@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useBaseline } from '../../hooks/useBaseline'
 import { useLogs } from '../../hooks/useLogs'
 import { useFilteredLogs } from '../../hooks/useFilteredLogs'
+import { useFlareEngine } from '../../hooks/useFlareEngine'
 import { SYMPTOM_METRICS } from '../../types/baseline'
 import type { DateRangeKey } from '../../constants/chartTheme'
 import ChartSection from './ChartSection'
@@ -22,6 +23,20 @@ export default function ChartsPanel() {
 
   const filteredLogs = useFilteredLogs(range)
   const todayLog = getTodayLog()
+  const flareResult = useFlareEngine()
+
+  // Filter flare windows to those overlapping the filtered date range
+  const visibleFlareWindows = useMemo(() => {
+    if (!flareResult?.flareWindows) return undefined
+    const firstDate = filteredLogs[0]?.date
+    const lastDate = filteredLogs[filteredLogs.length - 1]?.date
+    if (!firstDate || !lastDate) return undefined
+
+    return flareResult.flareWindows.filter((fw) => {
+      const fwEnd = fw.endDate ?? lastDate
+      return fw.startDate <= lastDate && fwEnd >= firstDate
+    })
+  }, [flareResult, filteredLogs])
 
   if (!baseline || logs.length < 2) return null
 
@@ -42,12 +57,12 @@ export default function ChartsPanel() {
         <div className="mb-3">
           <MetricToggle active={activeMetrics} onChange={setActiveMetrics} />
         </div>
-        <SymptomTrendChart logs={filteredLogs} activeMetrics={activeMetrics} />
+        <SymptomTrendChart logs={filteredLogs} activeMetrics={activeMetrics} flareWindows={visibleFlareWindows} />
       </ChartSection>
 
       {/* Row 3: Deviation Trend */}
       <ChartSection title="Overall Deviation">
-        <DeviationTrendChart logs={filteredLogs} />
+        <DeviationTrendChart logs={filteredLogs} flareWindows={visibleFlareWindows} />
       </ChartSection>
 
       {/* Row 4: Sleep (collapsed by default) */}
