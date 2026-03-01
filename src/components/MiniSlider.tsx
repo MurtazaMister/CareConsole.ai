@@ -15,6 +15,7 @@ export default function MiniSlider({ label, icon, value, onChange, color, min = 
   const range = max - min
   const percentage = range > 0 ? ((value - min) / range) * 100 : 0
   const deviation = baselineValue !== undefined ? value - baselineValue : undefined
+  const ticks = Array.from({ length: range + 1 }, (_, i) => min + i)
 
   return (
     <div className="bg-white rounded-xl border border-border p-4 hover:shadow-md transition-all">
@@ -60,6 +61,30 @@ export default function MiniSlider({ label, icon, value, onChange, color, min = 
           <span className="text-[10px] text-text-muted">{highLabel ?? `${max}`}</span>
         </div>
       )}
+
+      <div className="grid grid-cols-11 gap-1 mt-3">
+        {ticks.map((n) => {
+          const isActive = n <= value
+          const isCurrent = n === value
+          return (
+            <button
+              key={n}
+              onClick={() => onChange(n)}
+              className={`h-7 rounded-lg border text-[10px] font-semibold transition-all duration-200 ${
+                isActive ? 'text-white' : 'text-text-muted'
+              } ${isCurrent ? 'ring-2 ring-offset-2 ring-primary/30' : ''}`}
+              style={{
+                backgroundColor: isActive ? color : '#ffffff',
+                borderColor: isActive ? color : '#e2e8f0',
+                boxShadow: isActive ? `0 6px 14px ${color}25` : 'none',
+                transform: isCurrent ? 'translateY(-1px) scale(1.02)' : 'translateY(0) scale(1)',
+              }}
+            >
+              {n}
+            </button>
+          )
+        })}
+      </div>
 
       {baselineValue !== undefined && (
         <div className="flex items-center gap-1.5 mt-2 text-[10px] text-text-muted">
