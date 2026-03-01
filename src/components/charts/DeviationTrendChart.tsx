@@ -6,26 +6,13 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
-import { CHART_AXIS_STYLE, CHART_GRID_STYLE, CHART_TOOLTIP_STYLE, RISK_COLORS } from '../../constants/chartTheme'
+import { CHART_AXIS_STYLE, CHART_GRID_STYLE, CHART_TOOLTIP_STYLE } from '../../constants/chartTheme'
 import type { DailyLog } from '../../types/dailyLog'
 
 interface DeviationTrendChartProps {
   logs: DailyLog[]
-}
-
-function DotWithColor(props: { cx?: number; cy?: number; payload?: DailyLog }) {
-  const { cx, cy, payload } = props
-  if (!cx || !cy || !payload) return null
-  const color =
-    payload.flareRiskLevel === 'high'
-      ? RISK_COLORS.high
-      : payload.flareRiskLevel === 'medium'
-        ? RISK_COLORS.medium
-        : RISK_COLORS.low
-  return <circle cx={cx} cy={cy} r={4} fill={color} stroke="white" strokeWidth={2} />
 }
 
 export default function DeviationTrendChart({ logs }: DeviationTrendChartProps) {
@@ -67,15 +54,13 @@ export default function DeviationTrendChart({ logs }: DeviationTrendChartProps) 
           {...CHART_TOOLTIP_STYLE}
           formatter={(value) => [`${value}`, 'Deviation']}
         />
-        <ReferenceLine y={6} stroke={RISK_COLORS.medium} strokeDasharray="4 4" opacity={0.6} label={{ value: 'Medium', position: 'right', fill: RISK_COLORS.medium, fontSize: 10 }} />
-        <ReferenceLine y={10} stroke={RISK_COLORS.high} strokeDasharray="4 4" opacity={0.6} label={{ value: 'High', position: 'right', fill: RISK_COLORS.high, fontSize: 10 }} />
         <Area
           type="monotone"
           dataKey="deviationScore"
           stroke="#6366f1"
           strokeWidth={2.5}
           fill="url(#devGradient)"
-          dot={<DotWithColor />}
+          dot={{ r: 3, fill: '#6366f1', strokeWidth: 2, stroke: 'white' }}
           activeDot={{ r: 6, strokeWidth: 2, stroke: '#6366f1', fill: 'white' }}
         />
       </AreaChart>

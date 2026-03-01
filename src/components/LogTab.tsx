@@ -3,12 +3,10 @@ import { useBaseline } from '../hooks/useBaseline'
 import { useLogs } from '../hooks/useLogs'
 import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
 import {
-  RED_FLAGS,
+  HEALTH_CHECKS,
   calculateDeviation,
-  calculateFlareRisk,
   getTodayDateString,
   createEmptyLogForm,
-  FLARE_RISK_CONFIG,
 } from '../types/dailyLog'
 import type { DailyLog } from '../types/dailyLog'
 import type { Tab } from './TabBar'
@@ -18,7 +16,7 @@ import TimeInput from './TimeInput'
 
 const STEPS = [
   { title: 'Rate your core symptoms', subtitle: 'Takes 30 seconds' },
-  { title: 'Safety Check & Context', subtitle: 'Quick yes/no questions' },
+  { title: 'Health Check-in', subtitle: 'Quick yes/no questions' },
   { title: 'Sleep', subtitle: 'How did you sleep?' },
   { title: 'Review & Save', subtitle: 'Check your entry before saving' },
 ]
@@ -93,7 +91,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const toggleRedFlag = (key: keyof typeof form.redFlags) => {
+  const toggleHealthCheck = (key: keyof typeof form.redFlags) => {
     setForm((prev) => ({ ...prev, redFlags: { ...prev.redFlags, [key]: !prev.redFlags[key] } }))
   }
 
@@ -102,14 +100,12 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   const handleSubmit = async () => {
     if (saving) return
     setSaving(true)
-    const { perMetric, total } = calculateDeviation(form, baseline)
-    const flareRisk = calculateFlareRisk(total, perMetric, form.redFlags)
+    const { total } = calculateDeviation(form, baseline)
 
     const log: DailyLog = {
       ...form,
       date: selectedDate,
       deviationScore: total,
-      flareRiskLevel: flareRisk,
       createdAt: existingLog?.createdAt ?? new Date().toISOString(),
     }
 
@@ -135,8 +131,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   }
 
   const { perMetric: liveDeviation, total: liveTotal } = calculateDeviation(form, baseline)
-  const liveFlareRisk = calculateFlareRisk(liveTotal, liveDeviation, form.redFlags)
-  const hasRedFlags = Object.values(form.redFlags).some(Boolean)
+  const hasCheckedItems = Object.values(form.redFlags).some(Boolean)
 
   // Today gate screens
   if (isToday && !showForm) {
@@ -144,15 +139,12 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
 
     if (todayLog) {
       // Already logged for today
-      const riskConfig = FLARE_RISK_CONFIG[todayLog.flareRiskLevel]
-      const logRedFlags = todayLog.redFlags ? Object.values(todayLog.redFlags).filter(Boolean).length : 0
-
       return (
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-border p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: riskConfig.color + '15' }}>
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: riskConfig.color }} />
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-primary/10">
+                <div className="w-3 h-3 rounded-full bg-primary" />
               </div>
               <div>
                 <h2 className="text-lg font-semibold text-text">You've already logged for today</h2>
@@ -181,15 +173,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
               </div>
               <div className="flex items-center justify-between text-xs text-text-muted border-t border-border pt-3">
                 <span>Sleep: {todayLog.sleepHours}h ({SLEEP_QUALITY_LABELS[todayLog.sleepQuality]})</span>
-                <span
-                  className="font-bold px-2 py-0.5 rounded-full"
-                  style={{ color: riskConfig.color, backgroundColor: riskConfig.color + '15' }}
-                >
-                  {riskConfig.label}
-                </span>
-                {logRedFlags > 0 && (
-                  <span className="text-red-500 font-medium">{logRedFlags} red flag{logRedFlags > 1 ? 's' : ''}</span>
-                )}
+                <span className="text-text-muted">Deviation: {todayLog.deviationScore}</span>
               </div>
               {todayLog.notes && (
                 <p className="text-xs text-text-muted mt-2 italic">"{todayLog.notes}"</p>
@@ -289,14 +273,8 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
             <h2 className="text-base font-semibold text-text">{STEPS[step].title}</h2>
             <p className="text-text-muted text-xs">{STEPS[step].subtitle}</p>
           </div>
-          <span
-            className="text-xs font-bold px-2.5 py-1 rounded-full"
-            style={{
-              color: FLARE_RISK_CONFIG[liveFlareRisk].color,
-              backgroundColor: FLARE_RISK_CONFIG[liveFlareRisk].color + '15',
-            }}
-          >
-            {FLARE_RISK_CONFIG[liveFlareRisk].label}
+          <span className="text-xs font-medium text-text-muted">
+            Step {step + 1} of {totalSteps}
           </span>
         </div>
         <div className="h-1.5 bg-surface-dark rounded-full overflow-hidden">
@@ -328,32 +306,32 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
         </div>
       )}
 
-      {/* Step 1: Red Flags + Context */}
+      {/* Step 1: Health Check-in */}
       {step === 1 && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-border p-5">
-            <h3 className="font-semibold text-text mb-1">Safety Check</h3>
-            <p className="text-xs text-text-muted mb-4">These help detect urgent situations</p>
+            <h3 className="font-semibold text-text mb-1">Health Check-in</h3>
+            <p className="text-xs text-text-muted mb-4">Have you experienced any of the following?</p>
             <div className="space-y-3">
-              {RED_FLAGS.map((flag) => {
-                const isActive = form.redFlags[flag.key]
+              {HEALTH_CHECKS.map((check) => {
+                const isActive = form.redFlags[check.key]
                 return (
                   <button
-                    key={flag.key}
-                    onClick={() => toggleRedFlag(flag.key)}
+                    key={check.key}
+                    onClick={() => toggleHealthCheck(check.key)}
                     className={`
                       w-full flex items-center justify-between p-4 rounded-xl transition-all duration-200 border-2
                       ${isActive
-                        ? 'border-red-400 bg-red-50'
+                        ? 'border-primary/40 bg-primary/5'
                         : 'border-border bg-white hover:border-gray-300'}
                     `}
                   >
-                    <span className={`text-sm font-medium ${isActive ? 'text-red-700' : 'text-text'}`}>
-                      {flag.label}
+                    <span className={`text-sm font-medium ${isActive ? 'text-text' : 'text-text'}`}>
+                      {check.label}
                     </span>
                     <div className={`
                       w-14 h-8 rounded-full transition-all duration-200 flex items-center px-1
-                      ${isActive ? 'bg-red-500 justify-end' : 'bg-gray-200 justify-start'}
+                      ${isActive ? 'bg-primary justify-end' : 'bg-gray-200 justify-start'}
                     `}>
                       <div className="w-6 h-6 bg-white rounded-full shadow-sm" />
                     </div>
@@ -362,13 +340,6 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
               })}
             </div>
           </div>
-
-          {hasRedFlags && (
-            <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 text-center">
-              <p className="text-red-700 font-semibold text-sm">Consider contacting your clinician.</p>
-              <p className="text-red-600/70 text-xs mt-1">This is not medical advice — just a suggestion to check in.</p>
-            </div>
-          )}
         </div>
       )}
 
@@ -429,25 +400,16 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
       {/* Step 3: Review */}
       {step === 3 && (
         <div className="space-y-4">
-          {/* Flare risk */}
-          <div
-            className="rounded-2xl p-5 border-2"
-            style={{
-              borderColor: FLARE_RISK_CONFIG[liveFlareRisk].color + '40',
-              backgroundColor: FLARE_RISK_CONFIG[liveFlareRisk].color + '08',
-            }}
-          >
+          {/* Change from Baseline */}
+          <div className="rounded-2xl p-5 border-2 border-primary/20 bg-primary/5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-text-muted mb-1">Flare Risk Assessment</p>
-                <p className="text-xl font-bold" style={{ color: FLARE_RISK_CONFIG[liveFlareRisk].color }}>
-                  {FLARE_RISK_CONFIG[liveFlareRisk].label}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-text-muted">Change from Baseline</p>
+                <p className="text-xs text-text-muted mb-1">Change from Baseline</p>
                 <p className="text-3xl font-bold text-text">{liveTotal}</p>
               </div>
+              <p className="text-xs text-text-muted max-w-[140px] text-right">
+                Total deviation across all symptoms
+              </p>
             </div>
           </div>
 
@@ -492,9 +454,11 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
               <p className="text-[10px] text-text-muted">{SLEEP_QUALITY_LABELS[form.sleepQuality]}</p>
             </div>
             <div className="bg-white rounded-xl border border-border p-3 text-center">
-              <p className="text-[10px] text-text-muted">Red Flags</p>
-              <p className={`font-bold ${hasRedFlags ? 'text-red-500' : 'text-emerald-500'}`}>
-                {hasRedFlags ? 'Yes' : 'None'}
+              <p className="text-[10px] text-text-muted">Health Check</p>
+              <p className={`font-bold ${hasCheckedItems ? 'text-text' : 'text-emerald-500'}`}>
+                {hasCheckedItems
+                  ? `${Object.values(form.redFlags).filter(Boolean).length} noted`
+                  : 'All clear'}
               </p>
             </div>
             <div className="bg-white rounded-xl border border-border p-3 text-center">

@@ -10,7 +10,6 @@ import MetricToggle from './MetricToggle'
 import SymptomTrendChart from './SymptomTrendChart'
 import DeviationTrendChart from './DeviationTrendChart'
 import SymptomRadarChart from './SymptomRadarChart'
-import FlareRiskPieChart from './FlareRiskPieChart'
 import SleepChart from './SleepChart'
 
 export default function ChartsPanel() {
@@ -33,15 +32,10 @@ export default function ChartsPanel() {
         <DateRangeSelector value={range} onChange={setRange} />
       </div>
 
-      {/* Row 1: Radar + Donut */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ChartSection title="Today vs Baseline">
-          <SymptomRadarChart baseline={baseline} todayLog={todayLog} />
-        </ChartSection>
-        <ChartSection title="Risk Distribution">
-          <FlareRiskPieChart logs={filteredLogs} />
-        </ChartSection>
-      </div>
+      {/* Row 1: Radar */}
+      <ChartSection title="Today vs Baseline">
+        <SymptomRadarChart baseline={baseline} todayLog={todayLog} />
+      </ChartSection>
 
       {/* Row 2: Symptom Trends */}
       <ChartSection title="Symptom Trends">

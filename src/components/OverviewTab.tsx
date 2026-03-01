@@ -1,7 +1,7 @@
 import { useBaseline } from '../hooks/useBaseline'
 import { useLogs } from '../hooks/useLogs'
 import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
-import { FLARE_RISK_CONFIG } from '../types/dailyLog'
+import { HEALTH_CHECKS } from '../types/dailyLog'
 import type { Tab } from './TabBar'
 import ChartsPanel from './charts/ChartsPanel'
 
@@ -16,37 +16,22 @@ export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
   if (!baseline) return null
 
   const todayLog = getTodayLog()
-  const hasRedFlags = todayLog?.redFlags ? Object.values(todayLog.redFlags).some(Boolean) : false
-  const redFlagCount = todayLog?.redFlags ? Object.values(todayLog.redFlags).filter(Boolean).length : 0
+  const checkedItems = todayLog?.redFlags ? Object.values(todayLog.redFlags).filter(Boolean).length : 0
 
   return (
     <div className="space-y-6">
       {/* Today's Status */}
       {todayLog ? (
-        <div
-          className="rounded-2xl p-6 border-2 shadow-sm"
-          style={{
-            borderColor: FLARE_RISK_CONFIG[todayLog.flareRiskLevel].color + '30',
-            background: `linear-gradient(135deg, ${FLARE_RISK_CONFIG[todayLog.flareRiskLevel].color}08, white)`,
-          }}
-        >
+        <div className="rounded-2xl p-6 border-2 border-primary/20 shadow-sm bg-gradient-to-br from-primary/5 to-white">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-text-muted mb-1 uppercase tracking-wide font-medium">Today's Status</p>
-              <span
-                className="text-xl font-bold px-4 py-1.5 rounded-full inline-block"
-                style={{
-                  color: FLARE_RISK_CONFIG[todayLog.flareRiskLevel].color,
-                  backgroundColor: FLARE_RISK_CONFIG[todayLog.flareRiskLevel].color + '15',
-                }}
-              >
-                {FLARE_RISK_CONFIG[todayLog.flareRiskLevel].label}
-              </span>
+              <p className="text-xs text-text-muted mb-1 uppercase tracking-wide font-medium">Today's Log</p>
+              <p className="text-lg font-semibold text-text">Logged</p>
               <p className="text-sm text-text-muted mt-2">
-                Sleep: {todayLog.sleepHours}h ({SLEEP_QUALITY_LABELS[todayLog.sleepQuality]}) &middot;{' '}
-                {hasRedFlags
-                  ? <span className="text-red-500 font-medium">{redFlagCount} red flag{redFlagCount > 1 ? 's' : ''}</span>
-                  : <span className="text-emerald-500">No red flags</span>}
+                Sleep: {todayLog.sleepHours}h ({SLEEP_QUALITY_LABELS[todayLog.sleepQuality]})
+                {checkedItems > 0 && (
+                  <> &middot; <span className="text-text">{checkedItems} health note{checkedItems > 1 ? 's' : ''}</span></>
+                )}
               </p>
             </div>
             <button
@@ -153,7 +138,7 @@ export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
         </div>
       </div>
 
-      {/* Sleep & Red Flags Quick View (only when log exists) */}
+      {/* Sleep & Health Check-in Quick View (only when log exists) */}
       {todayLog && (
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white rounded-2xl border border-border p-5">
@@ -182,18 +167,12 @@ export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
           </div>
 
           <div className="bg-white rounded-2xl border border-border p-5">
-            <h4 className="text-xs text-text-muted uppercase tracking-wide font-medium mb-3">Red Flags</h4>
-            {hasRedFlags ? (
+            <h4 className="text-xs text-text-muted uppercase tracking-wide font-medium mb-3">Health Check-in</h4>
+            {checkedItems > 0 ? (
               <div className="space-y-2">
-                {todayLog.redFlags?.chestPainWeaknessConfusion && (
-                  <p className="text-xs text-red-600 flex items-center gap-1.5">Chest pain / weakness / confusion</p>
-                )}
-                {todayLog.redFlags?.feverSweatsChills && (
-                  <p className="text-xs text-red-600 flex items-center gap-1.5">Fever / sweats / chills</p>
-                )}
-                {todayLog.redFlags?.missedOrNewMedication && (
-                  <p className="text-xs text-red-600 flex items-center gap-1.5">Missed / new medication</p>
-                )}
+                {HEALTH_CHECKS.filter((c) => todayLog.redFlags?.[c.key]).map((check) => (
+                  <p key={check.key} className="text-xs text-text">{check.label.replace('?', '')}</p>
+                ))}
               </div>
             ) : (
               <p className="text-sm text-emerald-600 font-medium">All clear</p>

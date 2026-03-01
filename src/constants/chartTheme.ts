@@ -1,5 +1,4 @@
 import { SYMPTOM_METRICS } from '../types/baseline'
-import { FLARE_RISK_CONFIG } from '../types/dailyLog'
 
 // ── Date Range Presets ───────────────────────────────────
 
@@ -17,14 +16,6 @@ export const DATE_RANGE_PRESETS: { key: DateRangeKey; label: string; days: numbe
 export const METRIC_COLORS: Record<string, string> = Object.fromEntries(
   SYMPTOM_METRICS.map((m) => [m.key, m.color]),
 )
-
-// ── Risk Colors (from FLARE_RISK_CONFIG) ─────────────────
-
-export const RISK_COLORS = {
-  low: FLARE_RISK_CONFIG.low.color,
-  medium: FLARE_RISK_CONFIG.medium.color,
-  high: FLARE_RISK_CONFIG.high.color,
-}
 
 // ── Shared Chart Styling ─────────────────────────────────
 

@@ -11,7 +11,7 @@ export interface DailyLog {
   breathingDifficulty: number
   functionalLimitation: number
 
-  // Red flags (binary — safety critical)
+  // Health check-in (binary)
   redFlags: {
     chestPainWeaknessConfusion: boolean
     feverSweatsChills: boolean
@@ -29,34 +29,28 @@ export interface DailyLog {
 
   // Computed on save
   deviationScore: number
-  flareRiskLevel: FlareRisk
 
   createdAt: string
 }
 
-export type FlareRisk = 'low' | 'medium' | 'high'
+// ── Health check-in definitions ───────────────────────────
 
-// ── Red flag definitions ──────────────────────────────────
-
-export const RED_FLAGS = [
+export const HEALTH_CHECKS = [
   {
     key: 'chestPainWeaknessConfusion' as const,
     label: 'Sudden chest pain, severe weakness, or confusion?',
-    icon: '🚨',
   },
   {
     key: 'feverSweatsChills' as const,
     label: 'New fever, sweats, or chills?',
-    icon: '🤒',
   },
   {
     key: 'missedOrNewMedication' as const,
     label: 'Missed any medications or started a new one?',
-    icon: '💊',
   },
 ]
 
-// ── Deviation & flare logic ───────────────────────────────
+// ── Deviation logic ──────────────────────────────────────
 
 const CORE_KEYS = [
   'painLevel',
@@ -75,26 +69,6 @@ export function calculateDeviation(
   }
   const total = Object.values(perMetric).reduce((sum, v) => sum + Math.abs(v), 0)
   return { perMetric, total }
-}
-
-export function calculateFlareRisk(
-  deviationTotal: number,
-  perMetric: Record<string, number>,
-  redFlags?: DailyLog['redFlags'],
-): FlareRisk {
-  // Any red flag = immediate high risk
-  if (redFlags && Object.values(redFlags).some(Boolean)) return 'high'
-
-  const maxSingleDeviation = Math.max(...Object.values(perMetric).map(Math.abs))
-  if (deviationTotal > 10 || maxSingleDeviation >= 4) return 'high'
-  if (deviationTotal >= 6) return 'medium'
-  return 'low'
-}
-
-export const FLARE_RISK_CONFIG: Record<FlareRisk, { label: string; color: string }> = {
-  low: { label: 'Low Risk', color: '#10b981' },
-  medium: { label: 'Medium Risk', color: '#f59e0b' },
-  high: { label: 'High Risk', color: '#ef4444' },
 }
 
 // ── Helpers ───────────────────────────────────────────────

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useBaseline } from '../hooks/useBaseline'
 import { useLogs } from '../hooks/useLogs'
 import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
-import { FLARE_RISK_CONFIG, RED_FLAGS } from '../types/dailyLog'
+import { HEALTH_CHECKS } from '../types/dailyLog'
 import type { DailyLog } from '../types/dailyLog'
 import type { Tab } from './TabBar'
 import DeviationTrendChart from './charts/DeviationTrendChart'
@@ -25,12 +25,11 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
   }
 
   const renderLogDetail = (log: DailyLog) => {
-    const riskConfig = FLARE_RISK_CONFIG[log.flareRiskLevel]
-    const hasRedFlags = log.redFlags ? Object.values(log.redFlags).some(Boolean) : false
+    const checkedItems = log.redFlags ? Object.values(log.redFlags).filter(Boolean).length : 0
 
     return (
       <tr>
-        <td colSpan={8} className="px-4 py-4 bg-surface/50">
+        <td colSpan={7} className="px-4 py-4 bg-surface/50">
           <div className="space-y-4">
             {/* Symptom detail grid */}
             <div className="grid grid-cols-4 gap-2">
@@ -54,7 +53,7 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
             </div>
 
             {/* Summary row */}
-            <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="bg-white rounded-lg border border-border p-3">
                 <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Sleep</p>
                 <p className="font-bold text-text">{log.sleepHours}h &middot; {SLEEP_QUALITY_LABELS[log.sleepQuality]}</p>
@@ -63,19 +62,15 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
                 <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Bed / Wake</p>
                 <p className="font-bold text-text font-mono text-xs">{log.bedtime} – {log.wakeTime}</p>
               </div>
-              <div className="bg-white rounded-lg border border-border p-3">
-                <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Flare Risk</p>
-                <p className="font-bold text-xs" style={{ color: riskConfig.color }}>{riskConfig.label}</p>
-              </div>
             </div>
 
-            {/* Red flags */}
-            {hasRedFlags && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-xs text-red-700 font-semibold mb-1.5">Red Flags</p>
+            {/* Health check-in */}
+            {checkedItems > 0 && (
+              <div className="bg-surface rounded-lg border border-border p-3">
+                <p className="text-xs text-text font-semibold mb-1.5">Health Check-in</p>
                 <div className="space-y-1">
-                  {RED_FLAGS.filter((f) => log.redFlags?.[f.key]).map((flag) => (
-                    <p key={flag.key} className="text-xs text-red-600">{flag.label}</p>
+                  {HEALTH_CHECKS.filter((c) => log.redFlags?.[c.key]).map((check) => (
+                    <p key={check.key} className="text-xs text-text-muted">{check.label.replace('?', '')}</p>
                   ))}
                 </div>
               </div>
@@ -99,14 +94,7 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
       {/* Deviation Trend Chart */}
       {logs.length > 0 && (
         <div className="bg-white rounded-2xl border border-border p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-text">Deviation Trend</h3>
-            <div className="flex items-center gap-3 text-[10px] text-text-muted">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Low</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Medium</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> High</span>
-            </div>
-          </div>
+          <h3 className="text-sm font-semibold text-text mb-4">Deviation Trend</h3>
           <DeviationTrendChart logs={[...logs].sort((a, b) => a.date.localeCompare(b.date))} />
         </div>
       )}
@@ -133,14 +121,11 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
                   <th key={m.key} className="text-center px-2 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">{m.label}</th>
                 ))}
                 <th className="text-center px-2 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">Sleep</th>
-                <th className="text-center px-2 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">Flags</th>
-                <th className="text-center px-4 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">Risk</th>
+                <th className="text-center px-4 py-3 text-[10px] font-semibold text-text-muted uppercase tracking-wide">Deviation</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((log) => {
-                const riskConfig = FLARE_RISK_CONFIG[log.flareRiskLevel]
-                const logRedFlags = log.redFlags ? Object.values(log.redFlags).filter(Boolean).length : 0
                 const isExpanded = expandedDate === log.date
                 const dateStr = new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', {
                   month: 'short',
@@ -178,20 +163,8 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
                       <td className="text-center px-2 py-3">
                         <span className="text-sm text-text">{log.sleepHours}h</span>
                       </td>
-                      <td className="text-center px-2 py-3">
-                        {logRedFlags > 0 ? (
-                          <span className="text-xs text-red-500 font-medium">{logRedFlags}</span>
-                        ) : (
-                          <span className="text-xs text-text-muted">—</span>
-                        )}
-                      </td>
                       <td className="text-center px-4 py-3">
-                        <span
-                          className="text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap"
-                          style={{ color: riskConfig.color, backgroundColor: riskConfig.color + '15' }}
-                        >
-                          {riskConfig.label}
-                        </span>
+                        <span className="text-sm font-bold text-slate-600">{log.deviationScore}</span>
                       </td>
                     </tr>
                     {isExpanded && renderLogDetail(log)}
