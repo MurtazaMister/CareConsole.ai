@@ -26,6 +26,7 @@ export default function Onboarding() {
   const [step, setStep] = useState(0)
   const [condition, setCondition] = useState(baseline?.primaryCondition ?? '')
   const [duration, setDuration] = useState(baseline?.conditionDurationMonths ?? 0)
+  const [durationUnit, setDurationUnit] = useState<'weeks' | 'months' | 'years'>('months')
   const [symptoms, setSymptoms] = useState<Record<string, number>>(() => {
     if (baseline) {
       return {
@@ -47,7 +48,27 @@ export default function Onboarding() {
   const progress = ((step + 1) / totalSteps) * 100
 
   const canProceedStep0 = condition.trim().length > 0 && duration > 0
-  const canSubmit = confirmed && canProceedStep0
+  const timeToMinutes = (t: string) => {
+    const [h, m] = t.split(':').map(Number)
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0)
+  }
+  const isSleepOrderValid = timeToMinutes(wakeTime) > timeToMinutes(bedtime)
+  const canSubmit = confirmed && canProceedStep0 && isSleepOrderValid
+
+  const getDurationMonths = () => {
+    if (durationUnit === 'weeks') return Math.max(0, Math.round(duration / 4))
+    if (durationUnit === 'years') return Math.max(0, duration * 12)
+    return Math.max(0, duration)
+  }
+
+  const getDurationDisplay = () => {
+    if (duration <= 0) return ''
+    if (durationUnit === 'weeks') return `${duration} week${duration === 1 ? '' : 's'}`
+    if (durationUnit === 'years') return `${duration} year${duration === 1 ? '' : 's'}`
+    return duration >= 12
+      ? `${Math.floor(duration / 12)} year${Math.floor(duration / 12) > 1 ? 's' : ''}${duration % 12 > 0 ? `, ${duration % 12} mo` : ''}`
+      : `${duration} months`
+  }
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -58,7 +79,7 @@ export default function Onboarding() {
     setError('')
     const profile: BaselineProfile = {
       primaryCondition: condition.trim(),
-      conditionDurationMonths: duration,
+      conditionDurationMonths: getDurationMonths(),
       baselineDate: baseline?.baselineDate ?? getTodayDateString(),
       ...symptoms as Pick<BaselineProfile, 'painLevel' | 'fatigueLevel' | 'breathingDifficulty' | 'functionalLimitation'>,
       sleepHours,
@@ -125,7 +146,7 @@ export default function Onboarding() {
               <label className="block text-sm font-medium text-text mb-2">
                 Roughly how long have you been dealing with this?
               </label>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-wrap">
                 <input
                   type="number"
                   min={0}
@@ -135,10 +156,24 @@ export default function Onboarding() {
                   placeholder="0"
                   className="w-24 px-4 py-3 rounded-xl border border-border bg-surface text-text text-center font-bold text-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                 />
-                <span className="text-text-muted text-sm">months</span>
+                <div className="flex gap-2">
+                  {(['weeks', 'months', 'years'] as const).map((unit) => (
+                    <button
+                      key={unit}
+                      onClick={() => setDurationUnit(unit)}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all border ${
+                        durationUnit === unit
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-text-muted hover:border-gray-300 hover:bg-surface-dark'
+                      }`}
+                    >
+                      {unit}
+                    </button>
+                  ))}
+                </div>
                 {duration > 0 && (
                   <span className="text-xs text-text-muted">
-                    ({duration >= 12 ? `${Math.floor(duration / 12)} year${Math.floor(duration / 12) > 1 ? 's' : ''}${duration % 12 > 0 ? `, ${duration % 12} mo` : ''}` : `${duration} months`})
+                    ({getDurationDisplay()})
                   </span>
                 )}
               </div>
@@ -158,10 +193,12 @@ export default function Onboarding() {
                 <p className="text-sm text-text-muted mb-3">{metric.question}</p>
                 <MiniSlider
                   label={metric.label}
-                  icon={metric.icon}
+                  icon=""
+                  showIcon={false}
                   value={symptoms[metric.key]}
                   onChange={(v) => setSymptoms((prev) => ({ ...prev, [metric.key]: v }))}
-                  color={metric.color}
+                  color="#64748b"
+                  trackStyle="intensity"
                   lowLabel="None"
                   highLabel="Worst imaginable"
                 />
@@ -173,20 +210,33 @@ export default function Onboarding() {
         {/* Step 2: Sleep Baseline */}
         {step === 2 && (
           <div className="space-y-4">
-            <MiniSlider
-              label="Average Sleep Hours"
-              icon="🛏️"
-              value={sleepHours}
-              onChange={setSleepHours}
-              color="#6366f1"
-              min={3}
-              max={12}
-              lowLabel="3 hours"
-              highLabel="12 hours"
-            />
-            <LikertScale value={sleepQuality} onChange={setSleepQuality} />
-            <TimeInput label="Usual Bedtime" icon="🌙" value={bedtime} onChange={setBedtime} />
-            <TimeInput label="Usual Wake Time" icon="☀️" value={wakeTime} onChange={setWakeTime} />
+            <div className="bg-white rounded-xl border border-border p-4">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-text text-sm">Average Sleep Hours</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={24}
+                    value={sleepHours || ''}
+                    onChange={(e) => setSleepHours(Math.max(0, Math.min(24, Number(e.target.value))))}
+                    placeholder="7"
+                    className="w-24 px-3 py-2 rounded-lg border border-border bg-surface text-text text-center font-bold text-base focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                  />
+                  <span className="text-sm text-text-muted">hours</span>
+                </div>
+              </div>
+            </div>
+            <LikertScale value={sleepQuality} onChange={setSleepQuality} showIcon={false} variant="neutral" boxStyle="intensity" />
+            <TimeInput label="Usual Bedtime" icon="🌙" value={bedtime} onChange={setBedtime} showIcon={false} showDropdownArrow />
+            <TimeInput label="Usual Wake Time" icon="☀️" value={wakeTime} onChange={setWakeTime} showIcon={false} showDropdownArrow />
+            {!isSleepOrderValid && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-xs">
+                  Usual wake time must be later than usual bedtime.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -199,7 +249,7 @@ export default function Onboarding() {
               <div className="bg-surface rounded-xl p-4 mb-4 cursor-pointer hover:bg-surface-dark transition-colors" onClick={() => setStep(0)}>
                 <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Condition</p>
                 <p className="font-bold text-text">{condition}</p>
-                <p className="text-xs text-text-muted mt-1">{duration} months</p>
+                <p className="text-xs text-text-muted mt-1">{duration} {durationUnit}</p>
               </div>
 
               <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Core Symptoms</p>
@@ -211,17 +261,16 @@ export default function Onboarding() {
                     onClick={() => setStep(1)}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">{metric.icon}</span>
                       <span className="text-sm font-medium text-text">{metric.label}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-20 h-2 bg-surface-dark rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full"
-                          style={{ width: `${(symptoms[metric.key] / 10) * 100}%`, backgroundColor: metric.color }}
+                          style={{ width: `${(symptoms[metric.key] / 10) * 100}%`, backgroundColor: '#94a3b8' }}
                         />
                       </div>
-                      <span className="text-sm font-bold w-6 text-right" style={{ color: metric.color }}>
+                      <span className="text-sm font-bold w-6 text-right text-slate-600">
                         {symptoms[metric.key]}
                       </span>
                     </div>
@@ -275,7 +324,7 @@ export default function Onboarding() {
         <div className="flex items-center justify-between mt-8 max-w-lg mx-auto">
           <button
             onClick={() => step > 0 ? setStep(step - 1) : baseline ? navigate('/dashboard') : undefined}
-            className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
+            className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 cursor-pointer ${
               step === 0 && !baseline ? 'opacity-0 pointer-events-none' : 'text-text-muted hover:text-text hover:bg-white hover:shadow-md'
             }`}
           >
@@ -286,7 +335,7 @@ export default function Onboarding() {
             <button
               onClick={handleSubmit}
               disabled={!canSubmit}
-              className={`px-8 py-3 rounded-xl font-semibold text-white transition-all duration-200 ${
+              className={`px-8 py-3 rounded-xl font-semibold text-white transition-all duration-200 cursor-pointer ${
                 canSubmit
                   ? 'bg-gradient-to-r from-primary to-primary-dark hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5'
                   : 'bg-gray-300 cursor-not-allowed'
@@ -297,9 +346,9 @@ export default function Onboarding() {
           ) : (
             <button
               onClick={() => setStep(step + 1)}
-              disabled={step === 0 && !canProceedStep0}
-              className={`px-8 py-3 rounded-xl font-semibold text-white transition-all duration-200 ${
-                step === 0 && !canProceedStep0
+              disabled={(step === 0 && !canProceedStep0) || (step === 2 && !isSleepOrderValid)}
+              className={`px-8 py-3 rounded-xl font-semibold text-white transition-all duration-200 cursor-pointer ${
+                (step === 0 && !canProceedStep0) || (step === 2 && !isSleepOrderValid)
                   ? 'bg-gray-300 cursor-not-allowed'
                   : 'bg-gradient-to-r from-primary to-primary-dark hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5'
               }`}
@@ -314,7 +363,7 @@ export default function Onboarding() {
           {Array.from({ length: totalSteps }, (_, i) => (
             <button
               key={i}
-              onClick={() => (i === 0 || canProceedStep0) ? setStep(i) : undefined}
+              onClick={() => (i === 0 || canProceedStep0) && (i < 3 || isSleepOrderValid) ? setStep(i) : undefined}
               className={`rounded-full transition-all duration-300 ${
                 i === step ? 'w-8 h-2 bg-primary' : i < step ? 'w-2 h-2 bg-primary/40' : 'w-2 h-2 bg-surface-dark'
               }`}
