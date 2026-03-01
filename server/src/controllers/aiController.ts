@@ -477,3 +477,264 @@ export async function generateReport(req: Request, res: Response) {
     res.status(502).json({ error: 'Failed to generate report. Please try again.' })
   }
 }
+
+// ── Scan hand-filled form image ──────────────────────────
+
+export async function scanForm(req: Request, res: Response) {
+  const file = (req as Request & { file?: Express.Multer.File }).file
+  if (!file) {
+    res.status(400).json({ error: 'No image uploaded' })
+    return
+  }
+
+  // OpenAI Vision only accepts image types
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  if (!ALLOWED_TYPES.includes(file.mimetype)) {
+    res.status(400).json({ error: 'Please upload an image (JPEG, PNG, GIF, or WebP). PDFs are not supported.' })
+    return
+  }
+
+  // Fetch schema so we know what fields to extract
+  const userSchema = await UserSchema.findOne({ userId: req.userId })
+  if (!userSchema?.formSchema) {
+    res.status(400).json({ error: 'No schema found — complete onboarding first' })
+    return
+  }
+
+  const schema = userSchema.formSchema as {
+    pages?: {
+      questions?: { type: string; id: string; label: string; group?: string }[]
+    }[]
+  }
+
+  // Build a description of expected fields for GPT
+  const sliderFields: string[] = []
+  const toggleFields: { id: string; label: string; group?: string }[] = []
+  const numericFields: { id: string; label: string }[] = []
+  const likertFields: { id: string; label: string }[] = []
+  const timeFields: { id: string; label: string }[] = []
+  const textFields: { id: string; label: string }[] = []
+
+  for (const page of schema.pages ?? []) {
+    for (const q of page.questions ?? []) {
+      switch (q.type) {
+        case 'slider':
+          sliderFields.push(`"${q.id}" (${q.label}, 0-10)`)
+          break
+        case 'toggle':
+          toggleFields.push({ id: q.id, label: q.label, group: q.group })
+          break
+        case 'numeric':
+          numericFields.push({ id: q.id, label: q.label })
+          break
+        case 'likert':
+          likertFields.push({ id: q.id, label: q.label })
+          break
+        case 'time':
+          timeFields.push({ id: q.id, label: q.label })
+          break
+        case 'text':
+          textFields.push({ id: q.id, label: q.label })
+          break
+      }
+    }
+  }
+
+  const fieldDescriptions = [
+    sliderFields.length > 0
+      ? `Symptom sliders (0-10 scale, read the circled number): ${sliderFields.join(', ')}`
+      : '',
+    toggleFields.length > 0
+      ? `Checkboxes (true if checked, false otherwise): ${toggleFields.map((t) => `"${t.id}" (${t.label})`).join(', ')}`
+      : '',
+    numericFields.length > 0
+      ? `Numeric fields: ${numericFields.map((n) => `"${n.id}" (${n.label})`).join(', ')}`
+      : '',
+    likertFields.length > 0
+      ? `Likert scale (read circled number): ${likertFields.map((l) => `"${l.id}" (${l.label})`).join(', ')}`
+      : '',
+    timeFields.length > 0
+      ? `Time fields (HH:MM format): ${timeFields.map((t) => `"${t.id}" (${t.label})`).join(', ')}`
+      : '',
+    textFields.length > 0
+      ? `Text/notes fields: ${textFields.map((t) => `"${t.id}" (${t.label})`).join(', ')}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  // Group info for toggle responses
+  const groupInfo = toggleFields.some((t) => t.group)
+    ? `\nSome toggles belong to groups. Nest grouped toggles: "groupName": { "toggleId": true/false }`
+    : ''
+
+  const base64 = file.buffer.toString('base64')
+  const mimeType = file.mimetype || 'image/jpeg'
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an OCR assistant for a health tracking app. You are reading a scanned, hand-filled paper form.
+
+Extract structured data from the form image. The form has these fields:
+${fieldDescriptions}
+${groupInfo}
+
+Additionally extract these standard fields:
+- "sleepHours" (number, 0-24)
+- "sleepQuality" (number, 1-5, read the circled number)
+- "bedtime" (string, HH:MM)
+- "wakeTime" (string, HH:MM)
+- "notes" (string, any handwritten text in the notes section)
+- "redFlags" object with booleans: "chestPainWeaknessConfusion", "feverSweatsChills", "missedOrNewMedication"
+
+Rules:
+1. Read circled numbers on scales carefully
+2. Checked boxes = true, unchecked = false
+3. If a field is blank/unreadable, omit it from the response
+4. If the form is completely empty, not a health form, or is gibberish/unreadable, respond with: {"skipped": true, "reason": "description of why"}
+5. Otherwise respond with: {"skipped": false, "data": { ...extracted fields }}
+6. Put all symptom responses inside a "responses" key within data
+
+Respond ONLY with valid JSON.`,
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' },
+            },
+            { type: 'text', text: 'Please extract the health log data from this hand-filled form.' },
+          ],
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+      max_tokens: 1500,
+    })
+
+    const content = completion.choices[0]?.message?.content
+    if (!content) {
+      res.json({ skipped: true, reason: 'No response from AI' })
+      return
+    }
+
+    const parsed = JSON.parse(content)
+    if (parsed.skipped) {
+      res.json({ skipped: true, reason: parsed.reason || 'Form appears empty or unreadable' })
+      return
+    }
+
+    res.json({ skipped: false, data: parsed.data ?? parsed })
+  } catch (err) {
+    const error = err as Error & { status?: number }
+    if (error.status === 429) {
+      res.status(429).json({ error: 'AI service rate limit reached. Please try again.' })
+      return
+    }
+    console.error('Form scan error:', error.message)
+    res.status(500).json({ error: 'Failed to process form image' })
+  }
+}
+
+// ── Summarize chart data with AI ─────────────────────────
+
+export async function summarizeChart(req: Request, res: Response) {
+  const { chartTitle, chartData } = req.body
+  if (!chartTitle || !chartData) {
+    res.status(400).json({ error: 'chartTitle and chartData are required' })
+    return
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a health data analyst for a patient tracking app. You summarize chart data in plain, empathetic language a patient can understand.
+
+Rules:
+1. Write 2-3 short sentences max
+2. Highlight the most important trend or pattern
+3. If things are improving, acknowledge it positively
+4. If things are worsening, be gentle but honest
+5. Use simple language, no medical jargon
+6. Do not give medical advice — just describe what the data shows`,
+        },
+        {
+          role: 'user',
+          content: `Summarize this "${chartTitle}" chart data for the patient:\n${typeof chartData === 'string' ? chartData : JSON.stringify(chartData)}`,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 200,
+    })
+
+    const summary = completion.choices[0]?.message?.content?.trim() ?? ''
+    res.json({ summary })
+  } catch (err) {
+    const error = err as Error & { status?: number }
+    if (error.status === 429) {
+      res.status(429).json({ error: 'AI service rate limit reached. Please try again.' })
+      return
+    }
+    res.status(500).json({ error: 'Failed to generate summary' })
+  }
+}
+
+// ── Clean up speech-to-text transcription ────────────────
+
+export async function cleanNotes(req: Request, res: Response) {
+  const { rawText } = req.body
+  if (!rawText || typeof rawText !== 'string' || rawText.trim().length === 0) {
+    res.json({ text: '', skipped: true })
+    return
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You clean up speech-to-text transcriptions for a patient health tracking app. The patient is dictating notes about how they feel today.
+
+Rules:
+1. Fix grammar, punctuation, and sentence structure so the note reads naturally
+2. Keep the medical meaning intact — do not add or remove symptoms
+3. Keep it concise — one to three sentences max
+4. If the input is complete gibberish, random sounds, or makes absolutely no medical/health sense, respond with exactly: {"text":"","skipped":true}
+5. Otherwise respond with: {"text":"the cleaned note","skipped":false}
+
+Respond ONLY with the JSON object, nothing else.`,
+        },
+        { role: 'user', content: rawText.trim() },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+      max_tokens: 200,
+    })
+
+    const content = completion.choices[0]?.message?.content
+    if (!content) {
+      res.json({ text: rawText.trim(), skipped: false })
+      return
+    }
+
+    const parsed = JSON.parse(content)
+    res.json({ text: parsed.text ?? '', skipped: !!parsed.skipped })
+  } catch (err) {
+    const error = err as Error & { status?: number }
+    if (error.status === 429) {
+      res.status(429).json({ error: 'AI service rate limit reached. Please try again.' })
+      return
+    }
+    // On failure, return raw text rather than blocking the user
+    res.json({ text: rawText.trim(), skipped: false })
+  }
+}

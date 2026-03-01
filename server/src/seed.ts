@@ -5,6 +5,7 @@ import User from './models/User'
 import Baseline from './models/Baseline'
 import DailyLog from './models/DailyLog'
 import UserSchema from './models/UserSchema'
+import DoctorClient from './models/DoctorClient'
 import { calculateDeviation, calculateFlareRisk } from './utils/flareLogic'
 
 // ── Helpers ──────────────────────────────────────────────
@@ -704,6 +705,7 @@ async function seed() {
       username: u.username,
       email: u.email,
       password: hashedPassword,
+      role: 'patient',
       profile: { ...u.profile, completedAt: new Date().toISOString() },
     })
 
@@ -797,7 +799,77 @@ async function seed() {
     console.log()
   }
 
-  console.log('=== All Seed Accounts ===')
+  // ── Seed Doctors ───────────────────────────────────────
+  //
+  // Doctor accounts have role: 'doctor' and skip patient onboarding.
+  // Each doctor is assigned a set of patient clients via the DoctorClient
+  // junction model, giving them read-access to those patients' baselines,
+  // daily logs, schemas, and flare insights through the doctor dashboard.
+  //
+  // dr_chen  — Rheumatologist focus. Clients: sarah (SLE), priya (hEDS), elena (Scleroderma)
+  // dr_okafor — Pulmonologist / Neurologist focus. Clients: marcus (PAH), james (Myasthenia Gravis)
+
+  const DOCTORS = [
+    {
+      username: 'dr_chen',
+      email: 'dr.chen@hackrare.com',
+      password: 'drchen123',
+      profile: {
+        age: 45, heightCm: 170, weightKg: 68, bloodGroup: 'O+' as const,
+        allergies: 'None',
+        currentMedications: 'None',
+      },
+      clientUsernames: ['sarah', 'priya', 'elena'],
+    },
+    {
+      username: 'dr_okafor',
+      email: 'dr.okafor@hackrare.com',
+      password: 'drokafor123',
+      profile: {
+        age: 52, heightCm: 183, weightKg: 85, bloodGroup: 'B+' as const,
+        allergies: 'None',
+        currentMedications: 'None',
+      },
+      clientUsernames: ['marcus', 'james'],
+    },
+  ]
+
+  // Clean existing doctor users
+  for (const d of DOCTORS) {
+    const existing = await User.findOne({ email: d.email })
+    if (existing) {
+      await DoctorClient.deleteMany({ doctorId: existing._id })
+      await User.deleteOne({ _id: existing._id })
+    }
+  }
+
+  for (const d of DOCTORS) {
+    const hashedPassword = await bcrypt.hash(d.password, 10)
+    const doctor = await User.create({
+      username: d.username,
+      email: d.email,
+      password: hashedPassword,
+      role: 'doctor',
+      profile: { ...d.profile, completedAt: new Date().toISOString() },
+    })
+
+    // Assign clients
+    for (const clientUsername of d.clientUsernames) {
+      const patient = await User.findOne({ username: clientUsername })
+      if (patient) {
+        await DoctorClient.create({ doctorId: doctor._id, patientId: patient._id })
+      }
+    }
+
+    console.log(`[${d.username}] Doctor`)
+    console.log(`  Login: ${d.email} / ${d.password}`)
+    console.log(`  Clients: ${d.clientUsernames.join(', ')}`)
+    console.log()
+  }
+
+  // ── Summary ────────────────────────────────────────────
+
+  console.log('=== Patient Accounts ===')
   console.log('┌──────────┬────────────────────────┬────────────┬──────┐')
   console.log('│ Username │ Email                  │ Password   │ Days │')
   console.log('├──────────┼────────────────────────┼────────────┼──────┤')
@@ -809,6 +881,19 @@ async function seed() {
     console.log(`│ ${un} │ ${em} │ ${pw} │ ${dy} │`)
   }
   console.log('└──────────┴────────────────────────┴────────────┴──────┘')
+  console.log()
+  console.log('=== Doctor Accounts ===')
+  console.log('┌────────────┬──────────────────────────┬──────────────┬─────────────────────┐')
+  console.log('│ Username   │ Email                    │ Password     │ Clients             │')
+  console.log('├────────────┼──────────────────────────┼──────────────┼─────────────────────┤')
+  for (const d of DOCTORS) {
+    const un = d.username.padEnd(10)
+    const em = d.email.padEnd(24)
+    const pw = d.password.padEnd(12)
+    const cl = d.clientUsernames.join(', ').padEnd(19)
+    console.log(`│ ${un} │ ${em} │ ${pw} │ ${cl} │`)
+  }
+  console.log('└────────────┴──────────────────────────┴──────────────┴─────────────────────┘')
 
   await mongoose.disconnect()
 }

@@ -8,7 +8,7 @@ interface RequireAuthProps {
 }
 
 export default function RequireAuth({ children, requireProfile }: RequireAuthProps) {
-  const { isAuthenticated, isProfileComplete, loading } = useAuth()
+  const { isAuthenticated, isProfileComplete, loading, currentUser } = useAuth()
 
   if (loading) {
     return (
@@ -25,7 +25,8 @@ export default function RequireAuth({ children, requireProfile }: RequireAuthPro
     return <Navigate to="/auth" replace />
   }
 
-  if (requireProfile && !isProfileComplete) {
+  // Doctors skip profile/onboarding — they go straight to dashboard
+  if (requireProfile && !isProfileComplete && currentUser?.role !== 'doctor') {
     return <Navigate to="/profile-setup" replace />
   }
 

@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthProvider'
 import { BaselineProvider } from './context/BaselineProvider'
 import { SchemaProvider } from './context/SchemaProvider'
 import { LogsProvider } from './context/LogsProvider'
+import { DoctorProvider } from './context/DoctorProvider'
 import RequireAuth from './components/RequireAuth'
 import Auth from './pages/Auth'
 import ProfileSetup from './pages/ProfileSetup'
@@ -15,6 +16,7 @@ function App() {
       <BaselineProvider>
         <SchemaProvider>
         <LogsProvider>
+        <DoctorProvider>
           <BrowserRouter>
             <Routes>
               <Route path="/auth" element={<Auth />} />
@@ -24,6 +26,7 @@ function App() {
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </BrowserRouter>
+        </DoctorProvider>
         </LogsProvider>
         </SchemaProvider>
       </BaselineProvider>

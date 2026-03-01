@@ -1,3 +1,7 @@
+// ── Roles ────────────────────────────────────────────────
+
+export type UserRole = 'patient' | 'doctor'
+
 // ── User Account (auth credentials) ─────────────────────
 
 export interface UserAccount {
@@ -5,6 +9,7 @@ export interface UserAccount {
   username: string
   email: string
   password: string // plaintext — prototype only, backend will handle hashing
+  role: UserRole
   createdAt: string
 }
 

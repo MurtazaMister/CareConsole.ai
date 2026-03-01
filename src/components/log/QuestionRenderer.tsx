@@ -9,6 +9,7 @@ import type {
 import MiniSlider from '../MiniSlider'
 import LikertScale from '../LikertScale'
 import TimeInput from '../TimeInput'
+import VoiceButton from '../VoiceButton'
 
 interface QuestionRendererProps {
   question: Question
@@ -165,13 +166,21 @@ function TextRenderer({ q, value, onChange }: {
 }) {
   return (
     <div className="bg-white rounded-2xl border border-border p-5">
-      <label className="block text-sm font-medium text-text mb-1">
-        {q.question} {!q.required && <span className="text-text-muted font-normal">(optional)</span>}
-      </label>
+      <div className="flex items-center justify-between mb-1">
+        <label className="text-sm font-medium text-text">
+          {q.question} {!q.required && <span className="text-text-muted font-normal">(optional)</span>}
+        </label>
+        <VoiceButton
+          onTranscription={(text) => {
+            const current = (value || '').trim()
+            onChange(current ? `${current} ${text}` : text)
+          }}
+        />
+      </div>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={q.placeholder}
+        placeholder={q.placeholder ?? 'Tap the mic to dictate or type here...'}
         className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-text placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none transition-all"
         rows={q.multiline ? 3 : 1}
       />

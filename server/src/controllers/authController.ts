@@ -20,13 +20,14 @@ function sanitizeUser(user: InstanceType<typeof User>) {
     id: user._id,
     username: user.username,
     email: user.email,
+    role: user.role ?? 'patient',
     profile: user.profile,
     createdAt: user.createdAt,
   }
 }
 
 export async function signup(req: Request, res: Response) {
-  const { username, email, password } = req.body
+  const { username, email, password, role } = req.body
 
   if (!username || !validateUsername(username)) {
     res.status(400).json({ error: 'Username must be 3-30 characters (letters, numbers, underscores)' })
@@ -53,11 +54,14 @@ export async function signup(req: Request, res: Response) {
     return
   }
 
+  const userRole = role === 'doctor' ? 'doctor' : 'patient'
+
   const hashedPassword = await bcrypt.hash(password, 10)
   const user = await User.create({
     username,
     email: email.toLowerCase(),
     password: hashedPassword,
+    role: userRole,
   })
 
   setTokenCookie(res, String(user._id))
