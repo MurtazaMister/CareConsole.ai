@@ -9,6 +9,7 @@ import OverviewTab from '../components/OverviewTab'
 import LogTab from '../components/LogTab'
 import HistoryTab from '../components/HistoryTab'
 import InsightsTab from '../components/InsightsTab'
+import ReportsTab from '../components/ReportsTab'
 
 export default function Dashboard() {
   const { baseline, loading: baselineLoading, fetchBaseline } = useBaseline()
@@ -135,6 +136,7 @@ export default function Dashboard() {
         {activeTab === 'log' && <LogTab onSwitchTab={setActiveTab} />}
         {activeTab === 'history' && <HistoryTab onSwitchTab={setActiveTab} />}
         {activeTab === 'insights' && <InsightsTab onSwitchTab={setActiveTab} />}
+        {activeTab === 'reports' && <ReportsTab onSwitchTab={setActiveTab} />}
       </div>
     </div>
   )
