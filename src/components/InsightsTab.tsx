@@ -115,7 +115,7 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
       </div>
 
       {/* Composite Flare Score */}
-      <ChartSection title="Composite Flare Score">
+      <ChartSection title="Composite Flare Score" info="A single score combining all 4 symptoms, weighted by clinical importance. Dashed lines mark Watch, Mild, and Severe thresholds. Shaded areas are detected flare windows.">
         <CompositeScoreChart
           dailyAnalysis={filteredAnalysis}
           flareWindows={filteredWindows}
@@ -123,7 +123,7 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
       </ChartSection>
 
       {/* Symptom Signals (EWMA) */}
-      <ChartSection title="Symptom Signals (EWMA)">
+      <ChartSection title="Symptom Signals (EWMA)" info="Smoothed trend for each symptom. EWMA filters out one-off spikes so you only see sustained changes. Higher values mean that symptom has been consistently above baseline.">
         <div className="mb-3">
           <MetricToggle active={activeMetrics} onChange={setActiveMetrics} />
         </div>
@@ -135,7 +135,7 @@ export default function InsightsTab({ onSwitchTab }: InsightsTabProps) {
 
       {/* Flare Timeline */}
       {filteredWindows.length > 0 && (
-        <ChartSection title="Flare Timeline">
+        <ChartSection title="Flare Timeline" info="Each colored segment is a detected flare window. Click a segment to see its details below.">
           <FlareTimeline
             flareWindows={filteredWindows}
             totalDateRange={{

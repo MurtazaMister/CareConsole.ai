@@ -7,8 +7,8 @@ interface TabBarProps {
 }
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: 'overview', label: 'Overview', icon: '📊' },
   { key: 'log', label: 'Daily Log', icon: '📝' },
+  { key: 'overview', label: 'Overview', icon: '📊' },
   { key: 'history', label: 'History', icon: '📅' },
   { key: 'insights', label: 'Insights', icon: '🔬' },
 ]

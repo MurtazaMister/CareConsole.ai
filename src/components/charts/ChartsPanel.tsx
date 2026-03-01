@@ -48,12 +48,12 @@ export default function ChartsPanel() {
       </div>
 
       {/* Row 1: Radar */}
-      <ChartSection title="Today vs Baseline">
+      <ChartSection title="Today vs Baseline" info="Compares today's symptom levels against your baseline. A larger shape means more deviation from your normal.">
         <SymptomRadarChart baseline={baseline} todayLog={todayLog} />
       </ChartSection>
 
       {/* Row 2: Symptom Trends */}
-      <ChartSection title="Symptom Trends">
+      <ChartSection title="Symptom Trends" info="Each line tracks one symptom over time. Use the toggles to show or hide specific symptoms. Shaded areas highlight detected flare windows.">
         <div className="mb-3">
           <MetricToggle active={activeMetrics} onChange={setActiveMetrics} />
         </div>
@@ -61,12 +61,12 @@ export default function ChartsPanel() {
       </ChartSection>
 
       {/* Row 3: Deviation Trend */}
-      <ChartSection title="Overall Deviation">
+      <ChartSection title="Overall Deviation" info="Shows how far your overall symptoms are from baseline each day. Higher values mean more deviation. Shaded areas highlight detected flare windows.">
         <DeviationTrendChart logs={filteredLogs} flareWindows={visibleFlareWindows} />
       </ChartSection>
 
       {/* Row 4: Sleep (collapsed by default) */}
-      <ChartSection title="Sleep Patterns" defaultOpen={false}>
+      <ChartSection title="Sleep Patterns" info="Bars show hours slept each night. The line tracks sleep quality (1-5). Compare against your baseline sleep patterns." defaultOpen={false}>
         <SleepChart logs={filteredLogs} />
       </ChartSection>
     </div>
