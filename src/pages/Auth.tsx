@@ -2,16 +2,18 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { validateEmail, validateUsername, validatePassword } from '../types/user'
+import type { UserRole } from '../types/user'
 
 type Mode = 'login' | 'signup'
 
 export default function Auth() {
-  const { isAuthenticated, isProfileComplete, loading, signup, login } = useAuth()
+  const { isAuthenticated, isProfileComplete, loading, signup, login, currentUser } = useAuth()
   const [mode, setMode] = useState<Mode>('signup')
   const [step, setStep] = useState(0)
   const [error, setError] = useState('')
 
   // Signup fields
+  const [role, setRole] = useState<UserRole>('patient')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -29,7 +31,7 @@ export default function Auth() {
     )
   }
 
-  if (isAuthenticated && isProfileComplete) {
+  if (isAuthenticated && (isProfileComplete || currentUser?.role === 'doctor')) {
     return <Navigate to="/dashboard" replace />
   }
   if (isAuthenticated && !isProfileComplete) {
@@ -49,7 +51,7 @@ export default function Auth() {
 
   const handleSignup = async () => {
     if (!canSignup) return
-    const result = await signup(username.trim(), email.trim(), password)
+    const result = await signup(username.trim(), email.trim(), password, role)
     if (!result.success) {
       setError(result.error ?? 'Signup failed')
     }
@@ -123,6 +125,36 @@ export default function Auth() {
             {step === 0 && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold text-text">Let's get started</h2>
+
+                {/* Role selector */}
+                <div>
+                  <label className="block text-sm font-medium text-text mb-1.5">I am a</label>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setRole('patient')}
+                      className={`flex-1 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                        role === 'patient'
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-border text-text-muted hover:border-gray-300'
+                      }`}
+                    >
+                      Patient
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRole('doctor')}
+                      className={`flex-1 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                        role === 'doctor'
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-border text-text-muted hover:border-gray-300'
+                      }`}
+                    >
+                      Doctor / Professional
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-text mb-1.5">Username</label>
                   <input

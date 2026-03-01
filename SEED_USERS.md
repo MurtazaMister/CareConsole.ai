@@ -2,7 +2,7 @@
 
 Run `npx ts-node src/seed.ts` from `server/` to populate.
 
-## Accounts
+## Patient Accounts
 
 | Username | Email | Password | Disease | Days |
 |----------|-------|----------|---------|------|
@@ -11,6 +11,28 @@ Run `npx ts-node src/seed.ts` from `server/` to populate.
 | priya | priya@hackrare.com | priya123 | Hypermobile Ehlers-Danlos Syndrome (hEDS) | 90 |
 | james | james@hackrare.com | james123 | Myasthenia Gravis | 45 |
 | elena | elena@hackrare.com | elena123 | Systemic Sclerosis (Scleroderma) | 30 |
+
+## Doctor Accounts
+
+| Username | Email | Password | Clients |
+|----------|-------|----------|---------|
+| dr_chen | dr.chen@hackrare.com | drchen123 | sarah, priya, elena |
+| dr_okafor | dr.okafor@hackrare.com | drokafor123 | marcus, james |
+
+### dr_chen — Rheumatologist
+
+Manages patients with autoimmune and connective tissue conditions. Has read-access to baseline, daily logs, schema, and flare insights for each assigned patient.
+
+- **sarah** — SLE (90 days of logs)
+- **priya** — hEDS (90 days of logs)
+- **elena** — Scleroderma (30 days of logs)
+
+### dr_okafor — Pulmonologist / Neurologist
+
+Manages patients with cardiopulmonary and neuromuscular conditions.
+
+- **marcus** — PAH (60 days of logs)
+- **james** — Myasthenia Gravis (45 days of logs)
 
 ## Disease Patterns
 

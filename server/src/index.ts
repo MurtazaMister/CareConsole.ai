@@ -13,6 +13,7 @@ import logRoutes from './routes/logs'
 import aiRoutes from './routes/ai'
 import schemaRoutes from './routes/schema'
 import diseaseRoutes from './routes/disease'
+import doctorRoutes from './routes/doctor'
 
 const app = express()
 
@@ -32,6 +33,7 @@ app.use('/api/logs', authMiddleware, logRoutes)
 app.use('/api/ai', authMiddleware, aiRoutes)
 app.use('/api/schema', authMiddleware, schemaRoutes)
 app.use('/api/disease', authMiddleware, diseaseRoutes)
+app.use('/api/doctor', authMiddleware, doctorRoutes)
 
 // Error handler (must be last)
 app.use(errorHandler)

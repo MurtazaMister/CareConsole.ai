@@ -10,10 +10,13 @@ export interface IUserProfile {
   completedAt: string
 }
 
+export type UserRole = 'patient' | 'doctor'
+
 export interface IUser extends Document {
   username: string
   email: string
   password: string
+  role: UserRole
   profile: IUserProfile | null
   createdAt: Date
 }
@@ -46,6 +49,7 @@ const UserSchema = new Schema<IUser>({
     lowercase: true,
   },
   password: { type: String, required: true },
+  role: { type: String, enum: ['patient', 'doctor'], default: 'patient' },
   profile: { type: UserProfileSchema, default: null },
 }, { timestamps: { createdAt: true, updatedAt: false } })
 

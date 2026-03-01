@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, type ReactNode } from 'react'
 import { AuthContext } from './authContext'
 import type { AuthUser } from './authContext'
-import type { UserProfile } from '../types/user'
+import type { UserProfile, UserRole } from '../types/user'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
@@ -21,13 +21,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signup = useCallback(
-    async (username: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    async (username: string, email: string, password: string, role?: UserRole): Promise<{ success: boolean; error?: string }> => {
       try {
         const res = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ username, email, password }),
+          body: JSON.stringify({ username, email, password, role: role ?? 'patient' }),
         })
         const data = await res.json()
         if (!res.ok) {
