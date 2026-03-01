@@ -100,10 +100,10 @@ export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
                 <div className="space-y-1.5 mb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-text-muted w-12 shrink-0">Baseline</span>
-                    <div className="flex-1 h-2 bg-surface-dark rounded-full overflow-hidden">
+                    <div className="flex-1 h-2 bg-primary/10 rounded-full overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all duration-700 opacity-40"
-                        style={{ width: `${(baseValue / 10) * 100}%`, backgroundColor: '#94a3b8' }}
+                        className="h-full rounded-full bg-primary/30 transition-all duration-700"
+                        style={{ width: `${(baseValue / 10) * 100}%` }}
                       />
                     </div>
                     <span className="text-xs font-medium text-text-muted w-6 text-right">{baseValue}</span>
@@ -111,13 +111,13 @@ export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
                   {todayValue !== undefined && (
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-text-muted w-12 shrink-0">Today</span>
-                      <div className="flex-1 h-2 bg-surface-dark rounded-full overflow-hidden">
+                      <div className="flex-1 h-2 bg-primary/10 rounded-full overflow-hidden">
                         <div
-                          className="h-full rounded-full transition-all duration-700"
-                          style={{ width: `${(todayValue / 10) * 100}%`, backgroundColor: '#94a3b8' }}
+                          className="h-full rounded-full bg-primary transition-all duration-700"
+                          style={{ width: `${(todayValue / 10) * 100}%` }}
                         />
                       </div>
-                      <span className="text-xs font-bold w-6 text-right text-slate-600">
+                      <span className="text-xs font-bold w-6 text-right text-primary">
                         {todayValue}
                       </span>
                     </div>
