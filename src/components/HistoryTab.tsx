@@ -5,7 +5,7 @@ import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
 import { FLARE_RISK_CONFIG, RED_FLAGS } from '../types/dailyLog'
 import type { DailyLog } from '../types/dailyLog'
 import type { Tab } from './TabBar'
-import TrendChart from './TrendChart'
+import DeviationTrendChart from './charts/DeviationTrendChart'
 
 interface HistoryTabProps {
   onSwitchTab: (tab: Tab) => void
@@ -96,18 +96,18 @@ export default function HistoryTab({ onSwitchTab }: HistoryTabProps) {
 
   return (
     <div className="space-y-6">
-      {/* Trend Chart */}
+      {/* Deviation Trend Chart */}
       {logs.length > 0 && (
         <div className="bg-white rounded-2xl border border-border p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-text">Symptom Trend</h3>
+            <h3 className="text-sm font-semibold text-text">Deviation Trend</h3>
             <div className="flex items-center gap-3 text-[10px] text-text-muted">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Low</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Medium</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> High</span>
             </div>
           </div>
-          <TrendChart logs={logs} />
+          <DeviationTrendChart logs={[...logs].sort((a, b) => a.date.localeCompare(b.date))} />
         </div>
       )}
 

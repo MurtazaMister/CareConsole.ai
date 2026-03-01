@@ -3,6 +3,7 @@ import { useLogs } from '../hooks/useLogs'
 import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
 import { FLARE_RISK_CONFIG } from '../types/dailyLog'
 import type { Tab } from './TabBar'
+import ChartsPanel from './charts/ChartsPanel'
 
 interface OverviewTabProps {
   onSwitchTab: (tab: Tab) => void
@@ -72,6 +73,9 @@ export default function OverviewTab({ onSwitchTab }: OverviewTabProps) {
           </div>
         </div>
       )}
+
+      {/* Charts Dashboard */}
+      <ChartsPanel />
 
       {/* Metric Comparison Cards */}
       <div>

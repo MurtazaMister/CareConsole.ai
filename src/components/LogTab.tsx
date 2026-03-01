@@ -55,6 +55,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
   const existingLog = getLogByDate(selectedDate)
 
   const [step, setStep] = useState(0)
+  const [editing, setEditing] = useState(false)
   const [form, setForm] = useState(() => {
     if (existingLog) return loadFormFromLog(existingLog)
     return createEmptyLogForm(baseline ?? undefined)
@@ -67,14 +68,6 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
 
   const minDate = baseline.baselineDate ?? ''
   const isToday = selectedDate === today
-  const dateLabel = isToday
-    ? 'Today'
-    : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })
 
   // Re-init form when selected date changes
   if (selectedDate !== formDate) {
@@ -86,7 +79,12 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
     }
     setFormDate(selectedDate)
     setStep(0)
+    setEditing(false)
   }
+
+  // For today, gate behind the message screens unless editing
+  // For past dates, go straight to the form
+  const showForm = !isToday || editing
 
   const totalSteps = STEPS.length
   const progress = ((step + 1) / totalSteps) * 100
@@ -117,6 +115,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
 
     try {
       await addLog(log)
+      setEditing(false)
       onSwitchTab('overview')
     } catch (e) {
       console.error('Failed to save log:', e)
@@ -125,45 +124,161 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
     }
   }
 
+  const startEditing = () => {
+    if (existingLog) {
+      setForm(loadFormFromLog(existingLog))
+    } else {
+      setForm(createEmptyLogForm(baseline))
+    }
+    setStep(0)
+    setEditing(true)
+  }
+
   const { perMetric: liveDeviation, total: liveTotal } = calculateDeviation(form, baseline)
   const liveFlareRisk = calculateFlareRisk(liveTotal, liveDeviation, form.redFlags)
   const hasRedFlags = Object.values(form.redFlags).some(Boolean)
+
+  // Today gate screens
+  if (isToday && !showForm) {
+    const todayLog = existingLog
+
+    if (todayLog) {
+      // Already logged for today
+      const riskConfig = FLARE_RISK_CONFIG[todayLog.flareRiskLevel]
+      const logRedFlags = todayLog.redFlags ? Object.values(todayLog.redFlags).filter(Boolean).length : 0
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-border p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: riskConfig.color + '15' }}>
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: riskConfig.color }} />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-text">You've already logged for today</h2>
+                <p className="text-sm text-text-muted">If anything has changed, you can update your entry below.</p>
+              </div>
+            </div>
+
+            {/* Quick summary of today's log */}
+            <div className="bg-surface rounded-xl p-4 mb-4">
+              <div className="grid grid-cols-4 gap-3 mb-3">
+                {SYMPTOM_METRICS.map((metric) => {
+                  const val = todayLog[metric.key]
+                  const diff = val - baseline[metric.key]
+                  return (
+                    <div key={metric.key} className="text-center">
+                      <p className="text-[10px] text-text-muted">{metric.label}</p>
+                      <p className="text-lg font-bold text-slate-600">{val}</p>
+                      {diff !== 0 && (
+                        <p className="text-[10px] font-bold" style={{ color: diff > 0 ? '#ef4444' : '#10b981' }}>
+                          {diff > 0 ? '+' : ''}{diff}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex items-center justify-between text-xs text-text-muted border-t border-border pt-3">
+                <span>Sleep: {todayLog.sleepHours}h ({SLEEP_QUALITY_LABELS[todayLog.sleepQuality]})</span>
+                <span
+                  className="font-bold px-2 py-0.5 rounded-full"
+                  style={{ color: riskConfig.color, backgroundColor: riskConfig.color + '15' }}
+                >
+                  {riskConfig.label}
+                </span>
+                {logRedFlags > 0 && (
+                  <span className="text-red-500 font-medium">{logRedFlags} red flag{logRedFlags > 1 ? 's' : ''}</span>
+                )}
+              </div>
+              {todayLog.notes && (
+                <p className="text-xs text-text-muted mt-2 italic">"{todayLog.notes}"</p>
+              )}
+            </div>
+
+            <button
+              onClick={startEditing}
+              className="w-full py-3 rounded-xl font-semibold text-primary border-2 border-primary/20 hover:bg-primary/5 hover:border-primary/40 transition-all"
+            >
+              Edit Today's Log
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    // Not logged for today
+    return (
+      <div className="space-y-6">
+        <div className="bg-white rounded-2xl border border-border p-8 text-center">
+          <div className="w-12 h-12 rounded-full bg-amber-50 border-2 border-amber-200 flex items-center justify-center mx-auto mb-4">
+            <div className="w-3 h-3 rounded-full bg-amber-400" />
+          </div>
+          <h2 className="text-lg font-semibold text-text mb-2">You haven't logged for today</h2>
+          <p className="text-sm text-text-muted mb-6 max-w-sm mx-auto">
+            Take a minute to record how you're feeling. Make sure to do it before going to bed.
+          </p>
+          <button
+            onClick={startEditing}
+            className="px-8 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary to-primary-dark hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 transition-all duration-200"
+          >
+            Start Logging
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Date label for past dates
+  const dateLabel = isToday
+    ? 'Today'
+    : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
 
   return (
     <div>
       {/* Date picker */}
       <div className="bg-white rounded-2xl border border-border p-4 mb-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-xl">📅</span>
-            <div>
-              <p className="text-xs text-text-muted">Logging for</p>
-              <p className="text-sm font-semibold text-text">{dateLabel}</p>
-            </div>
+          <div>
+            <p className="text-xs text-text-muted">Logging for</p>
+            <p className="text-sm font-semibold text-text">{dateLabel}</p>
           </div>
           <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={selectedDate}
-              min={minDate}
-              max={today}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-border bg-surface text-text font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-            />
-            {!isToday && (
+            {isToday && (
               <button
-                onClick={() => setSelectedDate(today)}
-                className="px-3 py-2 rounded-lg text-xs font-medium text-primary border border-primary/20 hover:bg-primary/5 transition-all"
+                onClick={() => { setEditing(false) }}
+                className="px-3 py-2 rounded-lg text-xs font-medium text-text-muted border border-border hover:bg-surface-dark transition-all"
               >
-                Today
+                Cancel
               </button>
+            )}
+            {!isToday && (
+              <>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  min={minDate}
+                  max={today}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="px-3 py-2 rounded-lg border border-border bg-surface text-text font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+                <button
+                  onClick={() => setSelectedDate(today)}
+                  className="px-3 py-2 rounded-lg text-xs font-medium text-primary border border-primary/20 hover:bg-primary/5 transition-all"
+                >
+                  Today
+                </button>
+              </>
             )}
           </div>
         </div>
         {existingLog && (
-          <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-            <span>✏️</span> Editing existing log for this date
-          </p>
+          <p className="text-xs text-amber-600 mt-2">Editing existing log for this date</p>
         )}
       </div>
 
@@ -217,9 +332,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
       {step === 1 && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-border p-5">
-            <h3 className="font-semibold text-text mb-1 flex items-center gap-2">
-              <span>🚨</span> Safety Check
-            </h3>
+            <h3 className="font-semibold text-text mb-1">Safety Check</h3>
             <p className="text-xs text-text-muted mb-4">These help detect urgent situations</p>
             <div className="space-y-3">
               {RED_FLAGS.map((flag) => {
@@ -235,12 +348,9 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
                         : 'border-border bg-white hover:border-gray-300'}
                     `}
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">{flag.icon}</span>
-                      <span className={`text-sm font-medium ${isActive ? 'text-red-700' : 'text-text'}`}>
-                        {flag.label}
-                      </span>
-                    </div>
+                    <span className={`text-sm font-medium ${isActive ? 'text-red-700' : 'text-text'}`}>
+                      {flag.label}
+                    </span>
                     <div className={`
                       w-14 h-8 rounded-full transition-all duration-200 flex items-center px-1
                       ${isActive ? 'bg-red-500 justify-end' : 'bg-gray-200 justify-start'}
@@ -255,7 +365,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
 
           {hasRedFlags && (
             <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 text-center">
-              <p className="text-red-700 font-semibold text-sm">🚨 Consider contacting your clinician.</p>
+              <p className="text-red-700 font-semibold text-sm">Consider contacting your clinician.</p>
               <p className="text-red-600/70 text-xs mt-1">This is not medical advice — just a suggestion to check in.</p>
             </div>
           )}
@@ -297,7 +407,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
           />
           <TimeInput
             label="Bedtime"
-            icon="🌙"
+            icon=""
             value={form.bedtime}
             onChange={(v) => setForm((prev) => ({ ...prev, bedtime: v }))}
             baselineValue={baseline.usualBedtime}
@@ -306,7 +416,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
           />
           <TimeInput
             label="Wake Time"
-            icon="☀️"
+            icon=""
             value={form.wakeTime}
             onChange={(v) => setForm((prev) => ({ ...prev, wakeTime: v }))}
             baselineValue={baseline.usualWakeTime}
@@ -384,7 +494,7 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
             <div className="bg-white rounded-xl border border-border p-3 text-center">
               <p className="text-[10px] text-text-muted">Red Flags</p>
               <p className={`font-bold ${hasRedFlags ? 'text-red-500' : 'text-emerald-500'}`}>
-                {hasRedFlags ? '🚨 Yes' : '✅ None'}
+                {hasRedFlags ? 'Yes' : 'None'}
               </p>
             </div>
             <div className="bg-white rounded-xl border border-border p-3 text-center">
@@ -414,7 +524,13 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
       {/* Navigation */}
       <div className="flex items-center justify-between mt-8">
         <button
-          onClick={() => (step === 0 ? onSwitchTab('overview') : setStep(step - 1))}
+          onClick={() => {
+            if (step === 0) {
+              if (isToday) { setEditing(false) } else { onSwitchTab('overview') }
+            } else {
+              setStep(step - 1)
+            }
+          }}
           className="px-6 py-3 rounded-xl font-medium text-text-muted hover:text-text hover:bg-white hover:shadow-md transition-all duration-200"
         >
           {step === 0 ? 'Cancel' : 'Back'}
