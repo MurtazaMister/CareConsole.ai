@@ -16,6 +16,6 @@ export function useFilteredLogs(range: DateRangeKey): DailyLog[] {
     cutoff.setDate(cutoff.getDate() - days)
     const cutoffStr = cutoff.toISOString().split('T')[0]
 
-    return sorted.filter((log) => log.date >= cutoffStr)
+    return sorted.filter((log) => log.date > cutoffStr)
   }, [logs, range])
 }
