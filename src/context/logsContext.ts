@@ -3,10 +3,11 @@ import type { DailyLog } from '../types/dailyLog'
 
 export interface LogsContextType {
   logs: DailyLog[]
-  addLog: (log: DailyLog) => void
-  updateLog: (date: string, log: DailyLog) => void
+  loading: boolean
+  addLog: (log: DailyLog) => Promise<void>
   getLogByDate: (date: string) => DailyLog | undefined
   getTodayLog: () => DailyLog | undefined
+  fetchLogs: () => Promise<void>
 }
 
 export const LogsContext = createContext<LogsContextType | null>(null)

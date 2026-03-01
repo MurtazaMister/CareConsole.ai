@@ -1,41 +1,51 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react'
+import { useState, useCallback, type ReactNode } from 'react'
 import type { DailyLog } from '../types/dailyLog'
 import { getTodayDateString } from '../types/dailyLog'
 import { LogsContext } from './logsContext'
 
-const STORAGE_KEY = 'hackrare-logs'
-
 export function LogsProvider({ children }: { children: ReactNode }) {
-  const [logs, setLogs] = useState<DailyLog[]>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      try {
-        return JSON.parse(stored)
-      } catch {
-        return []
+  const [logs, setLogs] = useState<DailyLog[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/logs', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setLogs(data.logs)
+      } else {
+        setLogs([])
       }
+    } catch {
+      setLogs([])
+    } finally {
+      setLoading(false)
     }
-    return []
-  })
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(logs))
-  }, [logs])
-
-  const addLog = useCallback((log: DailyLog) => {
-    setLogs((prev) => {
-      const existing = prev.findIndex((l) => l.date === log.date)
-      if (existing >= 0) {
-        const updated = [...prev]
-        updated[existing] = log
-        return updated
-      }
-      return [...prev, log]
-    })
   }, [])
 
-  const updateLog = useCallback((date: string, log: DailyLog) => {
-    setLogs((prev) => prev.map((l) => (l.date === date ? log : l)))
+  const addLog = useCallback(async (log: DailyLog) => {
+    const res = await fetch('/api/logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(log),
+    })
+    if (!res.ok) {
+      const data = await res.json()
+      throw new Error(data.error || 'Failed to save log')
+    }
+    const data = await res.json()
+    // Update local state with the server response (has computed deviation/flare)
+    setLogs((prev) => {
+      const existing = prev.findIndex((l) => l.date === data.log.date)
+      if (existing >= 0) {
+        const updated = [...prev]
+        updated[existing] = data.log
+        return updated
+      }
+      return [data.log, ...prev]
+    })
   }, [])
 
   const getLogByDate = useCallback(
@@ -49,7 +59,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   )
 
   return (
-    <LogsContext.Provider value={{ logs, addLog, updateLog, getLogByDate, getTodayLog }}>
+    <LogsContext.Provider value={{ logs, loading, addLog, getLogByDate, getTodayLog, fetchLogs }}>
       {children}
     </LogsContext.Provider>
   )

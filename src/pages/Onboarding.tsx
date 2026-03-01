@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBaseline } from '../hooks/useBaseline'
 import { SYMPTOM_METRICS, SLEEP_QUALITY_LABELS } from '../types/baseline'
@@ -17,7 +17,11 @@ const STEPS = [
 
 export default function Onboarding() {
   const navigate = useNavigate()
-  const { baseline, setBaseline } = useBaseline()
+  const { baseline, setBaseline, fetchBaseline } = useBaseline()
+
+  useEffect(() => {
+    fetchBaseline()
+  }, [fetchBaseline])
 
   const [step, setStep] = useState(0)
   const [condition, setCondition] = useState(baseline?.primaryCondition ?? '')
@@ -45,8 +49,13 @@ export default function Onboarding() {
   const canProceedStep0 = condition.trim().length > 0 && duration > 0
   const canSubmit = confirmed && canProceedStep0
 
-  const handleSubmit = () => {
-    if (!canSubmit) return
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async () => {
+    if (!canSubmit || saving) return
+    setSaving(true)
+    setError('')
     const profile: BaselineProfile = {
       primaryCondition: condition.trim(),
       conditionDurationMonths: duration,
@@ -58,8 +67,14 @@ export default function Onboarding() {
       usualWakeTime: wakeTime,
       createdAt: baseline?.createdAt ?? new Date().toISOString(),
     }
-    setBaseline(profile)
-    navigate('/dashboard')
+    try {
+      await setBaseline(profile)
+      navigate('/dashboard')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save baseline')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -247,6 +262,12 @@ export default function Onboarding() {
                 </span>
               </label>
             </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mt-4">
+            <p className="text-red-600 text-sm text-center">{error}</p>
           </div>
         )}
 

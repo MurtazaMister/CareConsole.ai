@@ -17,8 +17,13 @@ export default function ProfileSetup() {
 
   const isValid = age > 0 && age <= 120 && heightCm > 0 && weightKg > 0 && bloodGroup !== ''
 
-  const handleSubmit = () => {
-    if (!isValid) return
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async () => {
+    if (!isValid || saving) return
+    setSaving(true)
+    setError('')
     const p: UserProfile = {
       age,
       heightCm,
@@ -28,8 +33,13 @@ export default function ProfileSetup() {
       currentMedications: medications.trim(),
       completedAt: profile?.completedAt ?? new Date().toISOString(),
     }
-    saveProfile(p)
-    navigate('/dashboard')
+    const result = await saveProfile(p)
+    setSaving(false)
+    if (result.success) {
+      navigate('/dashboard')
+    } else {
+      setError(result.error ?? 'Failed to save profile')
+    }
   }
 
   return (
@@ -152,6 +162,12 @@ export default function ProfileSetup() {
               </div>
             </div>
           </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <p className="text-red-600 text-sm text-center">{error}</p>
+            </div>
+          )}
 
           {/* Submit */}
           <div className="flex justify-end">

@@ -3,8 +3,10 @@ import type { BaselineProfile } from '../types/baseline'
 
 export interface BaselineContextType {
   baseline: BaselineProfile | null
-  setBaseline: (profile: BaselineProfile) => void
+  loading: boolean
+  setBaseline: (profile: BaselineProfile) => Promise<void>
   clearBaseline: () => void
+  fetchBaseline: () => Promise<void>
 }
 
 export const BaselineContext = createContext<BaselineContextType | null>(null)

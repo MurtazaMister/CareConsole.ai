@@ -1,112 +1,101 @@
-import { useState, useCallback, type ReactNode } from 'react'
+import { useState, useCallback, useEffect, type ReactNode } from 'react'
 import { AuthContext } from './authContext'
-import type { UserAccount, UserProfile } from '../types/user'
-import { validateEmail, validateUsername, validatePassword } from '../types/user'
-
-const ACCOUNTS_KEY = 'hackrare-accounts'
-const SESSION_KEY = 'hackrare-session'
-const PROFILE_KEY = 'hackrare-profile'
-
-function readAccounts(): UserAccount[] {
-  try {
-    return JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? '[]')
-  } catch {
-    return []
-  }
-}
-
-function readSession(): string | null {
-  return localStorage.getItem(SESSION_KEY)
-}
-
-function readProfile(): UserProfile | null {
-  try {
-    const stored = localStorage.getItem(PROFILE_KEY)
-    return stored ? JSON.parse(stored) : null
-  } catch {
-    return null
-  }
-}
+import type { AuthUser } from './authContext'
+import type { UserProfile } from '../types/user'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [accounts, setAccounts] = useState<UserAccount[]>(readAccounts)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(readSession)
-  const [profile, setProfile] = useState<UserProfile | null>(readProfile)
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const currentUser = accounts.find((a) => a.id === currentUserId) ?? null
+  // On mount, check if we have a valid session via cookie
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) {
+          setCurrentUser(data.user)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
   const signup = useCallback(
-    (username: string, email: string, password: string): { success: boolean; error?: string } => {
-      if (!validateUsername(username)) {
-        return { success: false, error: 'Username must be 3-30 characters (letters, numbers, underscores)' }
+    async (username: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ username, email, password }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          return { success: false, error: data.error || 'Signup failed' }
+        }
+        setCurrentUser(data.user)
+        return { success: true }
+      } catch {
+        return { success: false, error: 'Network error. Is the server running?' }
       }
-      if (!validateEmail(email)) {
-        return { success: false, error: 'Please enter a valid email address' }
-      }
-      if (!validatePassword(password)) {
-        return { success: false, error: 'Password must be at least 6 characters' }
-      }
-
-      const existing = readAccounts()
-      if (existing.some((a) => a.username.toLowerCase() === username.toLowerCase())) {
-        return { success: false, error: 'Username already taken' }
-      }
-      if (existing.some((a) => a.email.toLowerCase() === email.toLowerCase())) {
-        return { success: false, error: 'Email already registered' }
-      }
-
-      const account: UserAccount = {
-        id: crypto.randomUUID(),
-        username,
-        email: email.toLowerCase(),
-        password,
-        createdAt: new Date().toISOString(),
-      }
-
-      const updated = [...existing, account]
-      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(updated))
-      localStorage.setItem(SESSION_KEY, account.id)
-      localStorage.removeItem(PROFILE_KEY)
-      setAccounts(updated)
-      setCurrentUserId(account.id)
-      setProfile(null)
-      return { success: true }
     },
     [],
   )
 
   const login = useCallback(
-    (identifier: string, password: string): { success: boolean; error?: string } => {
-      const all = readAccounts()
-      const lowerIdent = identifier.toLowerCase()
-      const match = all.find(
-        (a) =>
-          (a.email.toLowerCase() === lowerIdent || a.username.toLowerCase() === lowerIdent) &&
-          a.password === password,
-      )
-      if (!match) {
-        return { success: false, error: 'Invalid credentials' }
+    async (identifier: string, password: string): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ identifier, password }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          return { success: false, error: data.error || 'Login failed' }
+        }
+        setCurrentUser(data.user)
+        return { success: true }
+      } catch {
+        return { success: false, error: 'Network error. Is the server running?' }
       }
-      localStorage.setItem(SESSION_KEY, match.id)
-      setAccounts(all)
-      setCurrentUserId(match.id)
-      // Load profile for this user
-      setProfile(readProfile())
-      return { success: true }
     },
     [],
   )
 
-  const logout = useCallback(() => {
-    localStorage.removeItem(SESSION_KEY)
-    setCurrentUserId(null)
-    setProfile(null)
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    } catch {
+      // Logout locally even if server request fails
+    }
+    setCurrentUser(null)
   }, [])
 
-  const saveProfile = useCallback((p: UserProfile) => {
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(p))
-    setProfile(p)
-  }, [])
+  const saveProfile = useCallback(
+    async (profile: UserProfile): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const res = await fetch('/api/user/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(profile),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          return { success: false, error: data.error || 'Failed to save profile' }
+        }
+        setCurrentUser(data.user)
+        return { success: true }
+      } catch {
+        return { success: false, error: 'Network error. Is the server running?' }
+      }
+    },
+    [],
+  )
+
+  const profile = currentUser?.profile ?? null
 
   return (
     <AuthContext.Provider
@@ -115,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         isAuthenticated: currentUser !== null,
         isProfileComplete: profile !== null,
+        loading,
         signup,
         login,
         logout,

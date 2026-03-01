@@ -10,13 +10,21 @@ import LogTab from '../components/LogTab'
 import HistoryTab from '../components/HistoryTab'
 
 export default function Dashboard() {
-  const { baseline } = useBaseline()
-  const { getTodayLog } = useLogs()
+  const { baseline, loading: baselineLoading, fetchBaseline } = useBaseline()
+  const { getTodayLog, loading: logsLoading, fetchLogs } = useLogs()
   const { currentUser, logout } = useAuth()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const [fetched, setFetched] = useState(false)
+
+  // Fetch baseline and logs on mount
+  useEffect(() => {
+    if (!fetched) {
+      Promise.all([fetchBaseline(), fetchLogs()]).then(() => setFetched(true))
+    }
+  }, [fetched, fetchBaseline, fetchLogs])
 
   // Close menu on outside click
   useEffect(() => {
@@ -28,6 +36,17 @@ export default function Dashboard() {
     if (menuOpen) document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [menuOpen])
+
+  if (!fetched || baselineLoading || logsLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-cyan-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-text-muted text-sm">Loading your dashboard...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!baseline) {
     return <Navigate to="/onboarding" replace />
@@ -48,9 +67,9 @@ export default function Dashboard() {
 
   const initial = currentUser?.username?.charAt(0).toUpperCase() ?? '?'
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setMenuOpen(false)
-    logout()
+    await logout()
     navigate('/auth')
   }
 

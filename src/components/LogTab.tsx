@@ -99,7 +99,11 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
     setForm((prev) => ({ ...prev, redFlags: { ...prev.redFlags, [key]: !prev.redFlags[key] } }))
   }
 
-  const handleSubmit = () => {
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async () => {
+    if (saving) return
+    setSaving(true)
     const { perMetric, total } = calculateDeviation(form, baseline)
     const flareRisk = calculateFlareRisk(total, perMetric, form.redFlags)
 
@@ -111,8 +115,14 @@ export default function LogTab({ onSwitchTab }: LogTabProps) {
       createdAt: existingLog?.createdAt ?? new Date().toISOString(),
     }
 
-    addLog(log)
-    onSwitchTab('overview')
+    try {
+      await addLog(log)
+      onSwitchTab('overview')
+    } catch (e) {
+      console.error('Failed to save log:', e)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const { perMetric: liveDeviation, total: liveTotal } = calculateDeviation(form, baseline)

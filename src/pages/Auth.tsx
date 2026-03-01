@@ -6,7 +6,7 @@ import { validateEmail, validateUsername, validatePassword } from '../types/user
 type Mode = 'login' | 'signup'
 
 export default function Auth() {
-  const { isAuthenticated, isProfileComplete, signup, login } = useAuth()
+  const { isAuthenticated, isProfileComplete, loading, signup, login } = useAuth()
   const [mode, setMode] = useState<Mode>('signup')
   const [step, setStep] = useState(0)
   const [error, setError] = useState('')
@@ -20,6 +20,14 @@ export default function Auth() {
   // Login fields
   const [loginId, setLoginId] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-cyan-50 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   if (isAuthenticated && isProfileComplete) {
     return <Navigate to="/dashboard" replace />
@@ -39,20 +47,20 @@ export default function Auth() {
   const passwordsMatch = password === confirmPassword
   const canSignup = validatePassword(password) && passwordsMatch
 
-  const handleSignup = () => {
+  const handleSignup = async () => {
     if (!canSignup) return
-    const result = signup(username.trim(), email.trim(), password)
+    const result = await signup(username.trim(), email.trim(), password)
     if (!result.success) {
       setError(result.error ?? 'Signup failed')
     }
   }
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!loginId.trim() || !loginPassword) {
       setError('Please fill in all fields')
       return
     }
-    const result = login(loginId.trim(), loginPassword)
+    const result = await login(loginId.trim(), loginPassword)
     if (!result.success) {
       setError(result.error ?? 'Login failed')
     }
@@ -244,7 +252,7 @@ export default function Auth() {
         )}
 
         <p className="text-center text-text-muted text-xs mt-6">
-          Your data stays on this device. No server required.
+          Your data is securely stored on our servers.
         </p>
       </div>
     </div>
