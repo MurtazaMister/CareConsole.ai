@@ -9,7 +9,6 @@ Patients define their personal health baseline, track daily symptoms, and get st
 ### Prerequisites
 
 - Node.js 18+
-- MongoDB (local or Atlas)
 - OpenAI API key (for AI Reports feature)
 
 ### Setup
@@ -66,4 +65,4 @@ This creates 5 test users with realistic disease-specific symptom data. See [SEE
 
 **Frontend:** React 19, TypeScript, Vite, Tailwind CSS 4, Recharts, React Router 7
 
-**Backend:** Node.js, Express, MongoDB, Mongoose, JWT (httpOnly cookies), bcrypt, OpenAI SDK
+**Backend:** Node.js, Express, QdrantDB, JWT (httpOnly cookies), bcrypt, OpenAI SDK
